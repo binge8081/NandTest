@@ -79,6 +79,23 @@ public sealed record DeviceProfile(
     public TracedField Field(string name) => Fields.Single(field => field.Name == name);
 }
 
+public sealed record GeometryCheck(bool RealDeviceEnabled, bool DevicePageKnown, bool MatchesVerifiedPage, string Reason);
+
+public static class DeviceGeometry
+{
+    public static GeometryCheck Check(int? verifiedPageBytes, int declaredPageBytes)
+    {
+        if (verifiedPageBytes is null)
+        {
+            return new GeometryCheck(false, false, false, "器件页长未经 datasheet 核实，声明值不能当作物理规格，也不启用实机。");
+        }
+
+        return verifiedPageBytes == declaredPageBytes
+            ? new GeometryCheck(false, true, true, "声明页长与已核实值一致，仍不因该项启用实机。")
+            : new GeometryCheck(false, true, false, "声明页长与已核实器件页长不一致，不能用于实机。");
+    }
+}
+
 public static class DeviceMaterialModel
 {
     public const int WdMassProductionCapMtPerS = 2400;

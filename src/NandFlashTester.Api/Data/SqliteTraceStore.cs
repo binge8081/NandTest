@@ -13,6 +13,7 @@ public sealed class StoredParameterImport
     public string? Version { get; init; }
     public string? DocumentId { get; init; }
     public string? Chapter { get; init; }
+    public string? ProposedValue { get; init; }
     public required string SourceStatus { get; init; }
     public bool Enabled { get; init; }
     public required string Reason { get; init; }
@@ -85,6 +86,14 @@ public sealed class SqliteTraceStore
                 );
                 """;
             command.ExecuteNonQuery();
+            try
+            {
+                command.CommandText = "ALTER TABLE parameter_imports ADD COLUMN proposed_value TEXT";
+                command.ExecuteNonQuery();
+            }
+            catch (SqliteException)
+            {
+            }
         }
     }
 
@@ -97,6 +106,7 @@ public sealed class SqliteTraceStore
             Version = import.Version,
             DocumentId = import.DocumentId,
             Chapter = import.Chapter,
+            ProposedValue = import.ProposedValue,
             SourceStatus = import.SourceStatus,
             Enabled = import.Enabled,
             Reason = import.Reason,
@@ -109,14 +119,15 @@ public sealed class SqliteTraceStore
             command.CommandText =
                 """
                 INSERT INTO parameter_imports (
-                    import_id, param_key, proposed_version, document_id, chapter, source_status, enabled, reason, created_at
-                ) VALUES ($id, $key, $version, $doc, $chapter, $status, $enabled, $reason, $at)
+                    import_id, param_key, proposed_version, document_id, chapter, proposed_value, source_status, enabled, reason, created_at
+                ) VALUES ($id, $key, $version, $doc, $chapter, $proposed, $status, $enabled, $reason, $at)
                 """;
             command.Parameters.AddWithValue("$id", stored.ImportId);
             command.Parameters.AddWithValue("$key", stored.Key);
             command.Parameters.AddWithValue("$version", (object?)stored.Version ?? DBNull.Value);
             command.Parameters.AddWithValue("$doc", (object?)stored.DocumentId ?? DBNull.Value);
             command.Parameters.AddWithValue("$chapter", (object?)stored.Chapter ?? DBNull.Value);
+            command.Parameters.AddWithValue("$proposed", (object?)stored.ProposedValue ?? DBNull.Value);
             command.Parameters.AddWithValue("$status", stored.SourceStatus);
             command.Parameters.AddWithValue("$enabled", stored.Enabled ? 1 : 0);
             command.Parameters.AddWithValue("$reason", stored.Reason);
@@ -133,7 +144,7 @@ public sealed class SqliteTraceStore
         {
             using var connection = Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT import_id, param_key, proposed_version, document_id, chapter, source_status, enabled, reason, created_at FROM parameter_imports ORDER BY created_at";
+            command.CommandText = "SELECT import_id, param_key, proposed_version, document_id, chapter, proposed_value, source_status, enabled, reason, created_at FROM parameter_imports ORDER BY created_at";
             var rows = new List<StoredParameterImport>();
             using var reader = command.ExecuteReader();
             while (reader.Read())
@@ -145,10 +156,11 @@ public sealed class SqliteTraceStore
                     Version = reader.IsDBNull(2) ? null : reader.GetString(2),
                     DocumentId = reader.IsDBNull(3) ? null : reader.GetString(3),
                     Chapter = reader.IsDBNull(4) ? null : reader.GetString(4),
-                    SourceStatus = reader.GetString(5),
-                    Enabled = reader.GetInt64(6) != 0,
-                    Reason = reader.GetString(7),
-                    CreatedAt = reader.GetString(8)
+                    ProposedValue = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    SourceStatus = reader.GetString(6),
+                    Enabled = reader.GetInt64(7) != 0,
+                    Reason = reader.GetString(8),
+                    CreatedAt = reader.GetString(9)
                 });
             }
 

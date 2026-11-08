@@ -38,6 +38,7 @@ public class ParameterAndTraceTests
             Assert.False(importBody.RootElement.GetProperty("activated").GetBoolean());
             Assert.Equal(JsonValueKind.Null, importBody.RootElement.GetProperty("activeValue").ValueKind);
             Assert.False(importBody.RootElement.GetProperty("import").GetProperty("enabled").GetBoolean());
+            Assert.Equal("2700", importBody.RootElement.GetProperty("import").GetProperty("proposedValue").GetString());
 
             using var library = JsonDocument.Parse(await (await client.GetAsync("/api/parameters")).Content.ReadAsStringAsync());
             Assert.False(library.RootElement.GetProperty("realDeviceParametersEnabled").GetBoolean());

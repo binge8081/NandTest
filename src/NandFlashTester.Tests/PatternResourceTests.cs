@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using NandFlashTester.Core.Materials;
 using NandFlashTester.Core.Patterns;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Tests.Support;
@@ -20,8 +21,13 @@ public class PatternResourceTests
         Assert.Equal(16, PatternLibrary.Slice(good.Resource, 1).Length);
 
         Assert.NotNull(PatternLibrary.Accept("synth-page", "v1", 16, new byte[15]).Error);
-        Assert.NotNull(PatternLibrary.Accept("synth-page", "v1", 8, new byte[16]).Error);
-        Assert.NotNull(PatternLibrary.Accept("synth-page", "v1", 8192, new byte[8192]).Error);
+        var largePage = PatternLibrary.Accept("synth-page", "v1", 8192, new byte[8192]);
+        Assert.Null(largePage.Error);
+        var geometry = DeviceGeometry.Check(null, largePage.Resource!.PageSize);
+        Assert.False(geometry.RealDeviceEnabled);
+        Assert.False(geometry.DevicePageKnown);
+        Assert.Contains("不是", PatternLibrary.Accept("synth-page", "v1", 16, new byte[HostPatternQuota.Default.MaxBytes + 16]).Error, StringComparison.Ordinal);
+        Assert.Contains("主机限额", PatternLibrary.Accept("synth-page", "v1", 16, new byte[HostPatternQuota.Default.MaxBytes + 16]).Error, StringComparison.Ordinal);
         Assert.NotNull(PatternLibrary.Accept("../secret", "v1", 16, new byte[16]).Error);
         Assert.Throws<ArgumentOutOfRangeException>(() => PatternLibrary.Slice(good.Resource, 2));
     }

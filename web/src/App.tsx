@@ -330,7 +330,7 @@ function PatternUpload(props: { onUploaded: (item: { id: string; version: string
   return (
     <div className="row">
       <label>页长度
-        <input type="number" min={16} max={4096} step={16} value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} />
+        <input type="number" min={1} step={1} value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} />
       </label>
       <label>版本
         <input value={version} maxLength={64} onChange={(event) => setVersion(event.target.value)} />
@@ -343,6 +343,7 @@ function PatternUpload(props: { onUploaded: (item: { id: string; version: string
           void api.uploadPattern(file, pageSize, version).then(props.onUploaded).catch((reason: Error) => setError(reason.message));
         }} />
       </label>
+      <p className="fine">64 KiB 是当前主机限额，不是器件页长上限。未核实的页长不能当作物理规格。</p>
       {error && <p className="error">{error}</p>}
     </div>
   );

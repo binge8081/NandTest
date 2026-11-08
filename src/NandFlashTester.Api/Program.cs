@@ -164,23 +164,25 @@ app.MapPost("/api/materials/coverage", (CoverageRequest request) =>
     return Results.Json(MaterialEndpoints.Coverage(request), statusCode: temperature.WithinCandidate ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
 });
 
-app.MapPost("/api/patterns", async (HttpRequest request, SqlitePatternStore patterns) =>
+app.MapPost("/api/patterns", async (HttpRequest request, SqlitePatternStore patterns, IConfiguration configuration) =>
 {
-    if (request.ContentLength is null or <= 0 or > PatternLibrary.MaxBytes)
+    var quota = new HostPatternQuota(configuration.GetValue("Platform:PatternHostMaxBytes", HostPatternQuota.Default.MaxBytes));
+    if (request.ContentLength is null or <= 0 || request.ContentLength > quota.MaxBytes)
     {
-        return Results.Json(new { error = "pattern_rejected", message = "文件长度必须是页长度的整数倍，并且不超过 64 KiB。" }, statusCode: StatusCodes.Status400BadRequest);
+        return Results.Json(new { error = "pattern_rejected", message = $"文件超过主机限额 {quota.MaxBytes} 字节。{HostPatternQuota.Role}" }, statusCode: StatusCodes.Status400BadRequest);
     }
 
     var data = new byte[request.ContentLength.Value];
     await request.Body.ReadExactlyAsync(data);
     var pageSize = int.TryParse(request.Query["pageSize"], out var parsed) ? parsed : 0;
-    var (resource, error) = PatternLibrary.Accept(request.Query["name"], request.Query["version"], pageSize, data);
+    var (resource, error) = PatternLibrary.Accept(request.Query["name"], request.Query["version"], pageSize, data, quota);
     if (resource is null)
     {
-        return Results.Json(new { error = "pattern_rejected", message = error }, statusCode: StatusCodes.Status400BadRequest);
+        return Results.Json(new { error = "pattern_rejected", message = error, hostQuotaIsDeviceSpecification = false }, statusCode: StatusCodes.Status400BadRequest);
     }
 
     patterns.Save(resource);
+    var geometry = DeviceGeometry.Check(null, resource.PageSize);
     return Results.Json(new
     {
         id = resource.Id,
@@ -190,6 +192,11 @@ app.MapPost("/api/patterns", async (HttpRequest request, SqlitePatternStore patt
         pageSize = resource.PageSize,
         pageCount = resource.PageCount,
         formulaNote = PatternLibrary.FormulaNote,
+        hostQuotaBytes = quota.MaxBytes,
+        hostQuotaIsDeviceSpecification = false,
+        devicePageKnown = geometry.DevicePageKnown,
+        deviceGeometryEnabled = geometry.RealDeviceEnabled,
+        geometryReason = geometry.Reason,
         hardwareExecuted = false
     }, statusCode: StatusCodes.Status201Created);
 });
@@ -374,6 +381,12 @@ app.MapGet("/api/parameters", (SqliteTraceStore store) => Results.Json(new
     imports = store.Imports(),
     realDeviceParametersEnabled = ParameterLibrary.Active.Where(entry => entry.Layer == SourceRules.DeviceLayer).All(entry => entry.Enabled) && ParameterLibrary.Active.Any(entry => entry.Layer == SourceRules.DeviceLayer && entry.Enabled)
 }));
+
+app.MapPost("/api/analysis/raw-bit-error", (RawBitErrorRequest request) =>
+{
+    var report = RawBitError.Compute(request.Source, request.ComparedBits, request.ErrorBits);
+    return Results.Json(report);
+});
 
 app.MapPost("/api/parameters/import", (ParameterImportRequest request, SqliteTraceStore store) =>
 {

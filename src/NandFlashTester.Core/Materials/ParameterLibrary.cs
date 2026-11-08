@@ -50,7 +50,14 @@ public static class ParameterLibrary
         var reason = status == SourceStatus.CitedUnverified
             ? "来源文字未核对到资料内容，参数保持禁用，提议值不生效。"
             : "没有资料来源，参数保持禁用，提议值不生效。";
-        return new ParameterImport(name, string.IsNullOrWhiteSpace(version) ? null : version.Trim(), documentId, chapter, null, status.ToString(), false, reason);
+        var proposed = string.IsNullOrWhiteSpace(proposedValue) ? null : proposedValue.Trim();
+        if (proposed is { Length: > 64 } || proposed?.Contains('/') == true || proposed?.Contains('\\') == true)
+        {
+            proposed = null;
+            reason += " 提议值格式无效，未保存为生效值。";
+        }
+
+        return new ParameterImport(name, string.IsNullOrWhiteSpace(version) ? null : version.Trim(), documentId, chapter, proposed, status.ToString(), false, reason);
     }
 
     private static ParameterEntry Candidate(string key, string value, string reason) =>
