@@ -1,0 +1,12 @@
+bin/
+obj/
+node_modules/
+dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+.vs/
+artifacts/
+*.user
+.DS_Store
