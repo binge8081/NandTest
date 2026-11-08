@@ -203,7 +203,8 @@ function ProductEntry() {
               <h2>自定义脚本</h2>
               <span className="pill">主机计划</span>
             </div>
-            <p className="fine">可声明变量、有界循环和 if 分支，也可写 BKERAS、PGPROG、PGRDCP、REPEAT、VSET08 这类命令。校验会标出行列。展开的是主机计划，不是已完成的擦写读。CMND、SNDAD、SETFTR 不会发送。当前脚本不是完整专业脚本。</p>
+            <p className="fine">可声明变量、有界循环和 if 分支，也可写 BKERAS、PGPROG、PGRDCP、REPEAT、VSET08 这类命令。图案文件只能在这里选择上传，脚本里写 SETBUF 加资源编号，不写路径。INCRMT 等使用本机图案，与旧逐字节等价尚未证明。展开的是主机计划，不是已完成的擦写读。</p>
+            <PatternUpload onUploaded={(item) => setNote(`已上传 ${item.id}，版本 ${item.version}，摘要 ${item.sha256}。可在脚本中写 SETBUF ${item.id}。`)} />
             <textarea aria-label="自定义脚本" spellCheck={false} value={scriptText} onChange={(event) => { setScriptText(event.target.value); setNote(null); setLogs([]); }} />
             {diagnostics.length > 0 && <ul className="errors">{diagnostics.map((item) => <li key={`${item.line}-${item.column}-${item.message}`}>{item.message}</li>)}</ul>}
             {note && <p className="fine">{note}</p>}
@@ -318,6 +319,31 @@ function FixtureEntry() {
         )}
         <p><a href="#/">返回领存NFA1000闪存测试仪</a></p>
       </section>
+    </div>
+  );
+}
+
+function PatternUpload(props: { onUploaded: (item: { id: string; version: string; sha256: string }) => void }) {
+  const [pageSize, setPageSize] = useState(16);
+  const [version, setVersion] = useState("v1");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="row">
+      <label>页长度
+        <input type="number" min={16} max={4096} step={16} value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} />
+      </label>
+      <label>版本
+        <input value={version} maxLength={64} onChange={(event) => setVersion(event.target.value)} />
+      </label>
+      <label>选择图案文件
+        <input type="file" aria-label="选择图案文件" onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          setError(null);
+          void api.uploadPattern(file, pageSize, version).then(props.onUploaded).catch((reason: Error) => setError(reason.message));
+        }} />
+      </label>
+      {error && <p className="error">{error}</p>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using NandFlashTester.Core.Patterns;
 
 namespace NandFlashTester.Core.Recipes;
 
@@ -11,6 +12,7 @@ namespace NandFlashTester.Core.Recipes;
 /// </summary>
 public static class SourceScript
 {
+    public const string PatternFormulaNote = PatternLibrary.FormulaNote;
     private static readonly HashSet<string> Mnemonics = new(StringComparer.Ordinal)
     {
         "REPEAT", "WAITMS", "WUNTIL", "SWRSET", "SWWAIT", "TSTAMP", "SETBUF",
@@ -32,7 +34,7 @@ public static class SourceScript
 
     private static readonly HashSet<string> Withheld = new(StringComparer.Ordinal)
     {
-        "SETBUF", "FNSCRT", "FNRSLT", "FNDUMP", "FNCOMP", "FNECNT",
+        "FNSCRT", "FNRSLT", "FNDUMP", "FNCOMP", "FNECNT",
         "CMND00", "CMND01", "CMND02", "CMND03", "CMND04",
         "CMND11", "CMND12", "CMND13", "CMND14",
         "CMND21", "CMND22", "CMND23", "CMND24",
@@ -69,7 +71,7 @@ public static class SourceScript
         return false;
     }
 
-    public static ScriptCompileResult Compile(string text)
+    public static ScriptCompileResult Compile(string text, IReadOnlyDictionary<string, PatternResource>? patterns = null)
     {
         var diagnostics = new List<ScriptDiagnostic>();
         if (Encoding.UTF8.GetByteCount(text) > ScriptCompiler.MaxBytes)
@@ -136,7 +138,8 @@ public static class SourceScript
         var address = new Cursor();
         uint seed = 1;
         var stop = new StopHold();
-        Expand(lines, 0, lines.Count, 0, vars, address, actions, diagnostics, ref seed, stop);
+        var binding = new PatternBinding();
+        Expand(lines, 0, lines.Count, 0, vars, address, binding, patterns, actions, diagnostics, ref seed, stop);
         if (diagnostics.Count > 0)
         {
             return ScriptCompileResult.Reject(diagnostics);
@@ -164,7 +167,7 @@ public static class SourceScript
             stop.Threshold), []);
     }
 
-    private static int Expand(List<CodeLine> lines, int start, int count, int depth, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
+    private static int Expand(List<CodeLine> lines, int start, int count, int depth, uint[] vars, Cursor cursor, PatternBinding binding, IReadOnlyDictionary<string, PatternResource>? patterns, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
     {
         var index = start;
         var consumed = 0;
@@ -206,7 +209,7 @@ public static class SourceScript
 
                 for (var time = 0; time < times; time++)
                 {
-                    Expand(lines, index + 1, (int)bodyCount, depth + 1, vars, cursor, actions, diagnostics, ref seed, stop);
+                    Expand(lines, index + 1, (int)bodyCount, depth + 1, vars, cursor, binding, patterns, actions, diagnostics, ref seed, stop);
                     if (diagnostics.Count > 0 || actions.Count > ScriptCompiler.MaxExpanded)
                     {
                         if (actions.Count > ScriptCompiler.MaxExpanded && diagnostics.Count == 0)
@@ -223,7 +226,7 @@ public static class SourceScript
                 continue;
             }
 
-            Emit(line, op, vars, cursor, actions, diagnostics, ref seed, stop);
+            Emit(line, op, vars, cursor, binding, patterns, actions, diagnostics, ref seed, stop);
             if (actions.Count > ScriptCompiler.MaxExpanded)
             {
                 diagnostics.Add(At(line.Number, line.Tokens[0].Column, $"展开后的步骤超过 {ScriptCompiler.MaxExpanded}，未执行。"));
@@ -237,7 +240,7 @@ public static class SourceScript
         return consumed;
     }
 
-    private static void Emit(CodeLine line, string op, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
+    private static void Emit(CodeLine line, string op, uint[] vars, Cursor cursor, PatternBinding binding, IReadOnlyDictionary<string, PatternResource>? patterns, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
     {
         if (op is "VSET01" or "VADD01" or "VMUL01" or "VSET02" or "VADD02" or "VMUL02" or "VSET04" or "VADD04" or "VMUL04" or "VSET08" or "VADD08" or "VMUL08")
         {
@@ -333,6 +336,33 @@ public static class SourceScript
             return;
         }
 
+        if (op == "SETBUF")
+        {
+            if (line.Tokens.Count != 2)
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[0].Column, "SETBUF 需要一个已上传的资源编号，未执行。"));
+                return;
+            }
+
+            var token = line.Tokens[1].Text;
+            if (token.Contains('/') || token.Contains('\\') || token.Contains(':'))
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[1].Column, "SETBUF 不读取宿主路径，请先在页面选择文件。"));
+                return;
+            }
+
+            if (patterns is null || !patterns.TryGetValue(token, out var resource))
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[1].Column, "图案资源不在本次选择中，未执行。"));
+                return;
+            }
+
+            binding.ResourceId = resource.Id;
+            binding.NextBuffer = 0;
+            actions.Add(new ScriptAction(actions.Count, line.Number, "mark", 0, null, false, "planned", null, resource.Id, 0));
+            return;
+        }
+
         if (op == "WAITMS")
         {
             if (line.Tokens.Count != 2 || !Hex(line.Tokens[1].Text, out var ms) || ms > 2000)
@@ -351,7 +381,7 @@ public static class SourceScript
             return;
         }
 
-        uint? pattern = PatternSeed(line, vars, diagnostics, ref seed);
+        var pattern = PatternUse.Read(line, vars, binding, patterns, diagnostics, ref seed);
         if (diagnostics.Count > 0)
         {
             return;
@@ -360,38 +390,38 @@ public static class SourceScript
         switch (op)
         {
             case "BKERAS":
-                actions.Add(Media(line, "erase", vars, cursor, diagnostics, pattern, page: false));
+                actions.Add(Media(line, "erase", vars, cursor, diagnostics, pattern.Seed, null, 0, page: false));
                 break;
             case "BKPROG":
             case "BKREAD":
             case "BKRDDM":
-                actions.Add(Media(line, op == "BKPROG" ? "program" : "read", vars, cursor, diagnostics, pattern, page: false));
+                actions.Add(Media(line, op == "BKPROG" ? "program" : "read", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: false));
                 break;
             case "BKRDEC":
-                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern, page: false));
-                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern, page: false));
+                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: false));
+                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: false));
                 break;
             case "PGPROG":
-                actions.Add(Media(line, "program", vars, cursor, diagnostics, pattern, page: true));
+                actions.Add(Media(line, "program", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: true));
                 break;
             case "PGREAD":
             case "PGRDDM":
-                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern, page: true));
+                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: true));
                 break;
             case "PGRDCP":
             case "PGRDEC":
-                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern, page: true));
-                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern, page: true));
+                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: true));
+                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: true));
                 break;
             case "PGCOMP":
-                actions.Add(new ScriptAction(actions.Count, line.Number, "compare", cursor.Block, cursor.Page < 0 ? 0 : cursor.Page, false, "planned", pattern));
+                actions.Add(new ScriptAction(actions.Count, line.Number, "compare", cursor.Block, cursor.Page < 0 ? 0 : cursor.Page, false, "planned", pattern.Seed, pattern.ResourceId, pattern.BufferIndex));
                 break;
             case "PGDUMP":
-                actions.Add(new ScriptAction(actions.Count, line.Number, "read", cursor.Block, cursor.Page < 0 ? 0 : cursor.Page, false, "planned", pattern));
+                actions.Add(new ScriptAction(actions.Count, line.Number, "read", cursor.Block, cursor.Page < 0 ? 0 : cursor.Page, false, "planned", pattern.Seed, pattern.ResourceId, pattern.BufferIndex));
                 break;
             case "BKRDCP":
-                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern, page: false));
-                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern, page: false));
+                actions.Add(Media(line, "read", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: false));
+                actions.Add(Media(line, "compare", vars, cursor, diagnostics, pattern.Seed, pattern.ResourceId, pattern.BufferIndex, page: false));
                 break;
             default:
                 diagnostics.Add(At(line.Number, line.Tokens[0].Column, $"语句 {op} 不能变成主机计划，未执行。"));
@@ -399,7 +429,7 @@ public static class SourceScript
         }
     }
 
-    private static ScriptAction Media(CodeLine line, string op, uint[] vars, Cursor cursor, List<ScriptDiagnostic> diagnostics, uint? pattern, bool page)
+    private static ScriptAction Media(CodeLine line, string op, uint[] vars, Cursor cursor, List<ScriptDiagnostic> diagnostics, uint? pattern, string? resourceId, int bufferIndex, bool page)
     {
         if (diagnostics.Count > 0 || line.Tokens.Count < (page ? 4 : 3))
         {
@@ -424,38 +454,74 @@ public static class SourceScript
             cursor.Page = numbered;
         }
 
-        return new ScriptAction(0, line.Number, op, (int)block, pageValue, false, "planned", pattern);
+        return new ScriptAction(0, line.Number, op, (int)block, pageValue, false, "planned", pattern, resourceId, bufferIndex);
     }
 
-    private static uint? PatternSeed(CodeLine line, uint[] vars, List<ScriptDiagnostic> diagnostics, ref uint seed)
+    private readonly record struct PatternUse(uint? Seed, string? ResourceId, int BufferIndex)
     {
-        var marker = line.Tokens.FindIndex(token =>
-            token.Text.Equals("RANDOM", StringComparison.OrdinalIgnoreCase)
-            || token.Text.Equals("INCRMT", StringComparison.OrdinalIgnoreCase)
-            || token.Text.Equals("ICROVL", StringComparison.OrdinalIgnoreCase)
-            || token.Text.Equals("RDMOVL", StringComparison.OrdinalIgnoreCase)
-            || token.Text.Equals("BUFFER", StringComparison.OrdinalIgnoreCase)
-            || token.Text.Equals("BUFATA", StringComparison.OrdinalIgnoreCase));
-        if (marker < 0)
+        public static PatternUse Read(CodeLine line, uint[] vars, PatternBinding binding, IReadOnlyDictionary<string, PatternResource>? patterns, List<ScriptDiagnostic> diagnostics, ref uint seed)
         {
-            return null;
-        }
+            var marker = line.Tokens.FindIndex(token =>
+                token.Text.Equals("RANDOM", StringComparison.OrdinalIgnoreCase)
+                || token.Text.Equals("INCRMT", StringComparison.OrdinalIgnoreCase)
+                || token.Text.Equals("ICROVL", StringComparison.OrdinalIgnoreCase)
+                || token.Text.Equals("RDMOVL", StringComparison.OrdinalIgnoreCase)
+                || token.Text.Equals("BUFFER", StringComparison.OrdinalIgnoreCase)
+                || token.Text.Equals("BUFATA", StringComparison.OrdinalIgnoreCase));
+            if (marker < 0)
+            {
+                return new PatternUse(null, null, 0);
+            }
 
-        var kind = line.Tokens[marker].Text.ToUpperInvariant();
-        if (kind is "BUFFER" or "BUFATA")
-        {
-            diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "缓冲图案不读取外部文件，未执行。"));
-            return null;
-        }
+            var kind = line.Tokens[marker].Text.ToUpperInvariant();
+            if (kind is "BUFFER" or "BUFATA")
+            {
+                if (binding.ResourceId is null || patterns is null || !patterns.TryGetValue(binding.ResourceId, out var resource))
+                {
+                    diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "缓冲图案需要页面上已选择的资源，不读取路径。"));
+                    return new PatternUse(null, null, 0);
+                }
 
-        if (marker + 1 >= line.Tokens.Count || !Value(line.Tokens[marker + 1], vars, out var value))
-        {
-            diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "图案缺少十六进制参数，未执行。"));
-            return null;
-        }
+                var index = binding.NextBuffer;
+                if (kind == "BUFFER")
+                {
+                    if (marker + 1 >= line.Tokens.Count || !Hex(line.Tokens[marker + 1].Text, out var parsed) || parsed > int.MaxValue)
+                    {
+                        diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "BUFFER 需要缓冲序号。"));
+                        return new PatternUse(null, null, 0);
+                    }
 
-        seed = value == 0 ? 1u : value;
-        return seed;
+                    index = (int)parsed;
+                }
+                else
+                {
+                    binding.NextBuffer++;
+                }
+
+                if (index < 0 || index >= resource.PageCount)
+                {
+                    diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "缓冲序号超出已上传文件的页数。"));
+                    return new PatternUse(null, null, 0);
+                }
+
+                return new PatternUse(null, resource.Id, index);
+            }
+
+            if (marker + 1 >= line.Tokens.Count || !Value(line.Tokens[marker + 1], vars, out var value))
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "图案缺少十六进制参数，未执行。"));
+                return new PatternUse(null, null, 0);
+            }
+
+            seed = value == 0 ? 1u : value;
+            return new PatternUse(seed, null, 0);
+        }
+    }
+
+    private sealed class PatternBinding
+    {
+        public string? ResourceId { get; set; }
+        public int NextBuffer { get; set; }
     }
 
     private static bool Value(Tok token, uint[] vars, out uint value)

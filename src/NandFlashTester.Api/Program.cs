@@ -12,6 +12,7 @@ using NandFlashTester.Core.Execution;
 using NandFlashTester.Core.Management;
 using NandFlashTester.Core.Materials;
 using NandFlashTester.Core.Platform;
+using NandFlashTester.Core.Patterns;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Core.Scope;
 
@@ -48,6 +49,11 @@ builder.Services.AddSingleton(sp =>
     var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
     return new SqliteScriptStore(databasePath);
 });
+builder.Services.AddSingleton(sp =>
+{
+    var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
+    return new SqlitePatternStore(databasePath);
+});
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddSingleton<IJobPacing, NoDelayPacing>();
 builder.Services.AddSingleton<JobService>();
@@ -67,6 +73,7 @@ app.Services.GetRequiredService<SqliteJobStore>().Initialize();
 app.Services.GetRequiredService<SqliteSessionStore>().Initialize();
 app.Services.GetRequiredService<SqliteTraceStore>().Initialize();
 app.Services.GetRequiredService<SqliteScriptStore>().Initialize();
+app.Services.GetRequiredService<SqlitePatternStore>().Initialize();
 app.UseCors("ui");
 
 var bundledUi = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
@@ -157,11 +164,53 @@ app.MapPost("/api/materials/coverage", (CoverageRequest request) =>
     return Results.Json(MaterialEndpoints.Coverage(request), statusCode: temperature.WithinCandidate ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
 });
 
+app.MapPost("/api/patterns", async (HttpRequest request, SqlitePatternStore patterns) =>
+{
+    if (request.ContentLength is null or <= 0 or > PatternLibrary.MaxBytes)
+    {
+        return Results.Json(new { error = "pattern_rejected", message = "文件长度必须是页长度的整数倍，并且不超过 64 KiB。" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var data = new byte[request.ContentLength.Value];
+    await request.Body.ReadExactlyAsync(data);
+    var pageSize = int.TryParse(request.Query["pageSize"], out var parsed) ? parsed : 0;
+    var (resource, error) = PatternLibrary.Accept(request.Query["name"], request.Query["version"], pageSize, data);
+    if (resource is null)
+    {
+        return Results.Json(new { error = "pattern_rejected", message = error }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    patterns.Save(resource);
+    return Results.Json(new
+    {
+        id = resource.Id,
+        name = resource.Name,
+        version = resource.Version,
+        sha256 = resource.Sha256,
+        pageSize = resource.PageSize,
+        pageCount = resource.PageCount,
+        formulaNote = PatternLibrary.FormulaNote,
+        hardwareExecuted = false
+    }, statusCode: StatusCodes.Status201Created);
+});
+app.MapGet("/api/patterns", (SqlitePatternStore patterns) => Results.Json(new
+{
+    formulaNote = PatternLibrary.FormulaNote,
+    patterns = patterns.Catalog().Values.Select(resource => new
+    {
+        id = resource.Id,
+        name = resource.Name,
+        version = resource.Version,
+        sha256 = resource.Sha256,
+        pageSize = resource.PageSize,
+        pageCount = resource.PageCount
+    })
+}));
 app.MapGet("/api/scripts/example", () => Results.Json(ScriptEndpoints.Example()));
 app.MapGet("/api/scripts/map", () => Results.Json(ScriptEndpoints.Map()));
-app.MapPost("/api/scripts/check", (ScriptDocumentRequest request) =>
+app.MapPost("/api/scripts/check", (ScriptDocumentRequest request, SqlitePatternStore patterns) =>
 {
-    var (status, body) = ScriptEndpoints.Check(request.Body);
+    var (status, body) = ScriptEndpoints.Check(request.Body, patterns.Catalog());
     return Results.Json(body, statusCode: status);
 });
 app.MapPost("/api/scripts", (ScriptDocumentRequest request, SqliteScriptStore store) =>
@@ -182,9 +231,9 @@ app.MapPut("/api/scripts/{id}", (string id, ScriptDocumentRequest request, Sqlit
     var (status, body) = ScriptEndpoints.Save(store, id, request);
     return Results.Json(body, statusCode: status);
 });
-app.MapPost("/api/scripts/{id}/plan", (string id, SqliteScriptStore store) =>
+app.MapPost("/api/scripts/{id}/plan", (string id, SqliteScriptStore store, SqlitePatternStore patterns) =>
 {
-    var (status, body) = ScriptEndpoints.Plan(store, id);
+    var (status, body) = ScriptEndpoints.Plan(store, id, patterns.Catalog());
     return Results.Json(body, statusCode: status);
 });
 app.MapPost("/api/scripts/{id}/stop", (string id, SqliteScriptStore store) =>

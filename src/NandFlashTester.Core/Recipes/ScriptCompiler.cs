@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using NandFlashTester.Core.Patterns;
 
 namespace NandFlashTester.Core.Recipes;
 
@@ -13,7 +14,9 @@ public sealed record ScriptAction(
     int? Page,
     bool HardwareExecuted,
     string State,
-    uint? PatternSeed = null);
+    uint? PatternSeed = null,
+    string? PatternResourceId = null,
+    int PatternBufferIndex = 0);
 
 public sealed record ScriptPlan(
     string Name,
@@ -67,11 +70,11 @@ public static class ScriptCompiler
         "script", "exec", "execute", "command", "shell", "python", "eval", "import", "function", "cmd", "powershell", "bash"
     };
 
-    public static ScriptCompileResult Compile(string? text)
+    public static ScriptCompileResult Compile(string? text, IReadOnlyDictionary<string, PatternResource>? patterns = null)
     {
         if (SourceScript.LooksLike(text))
         {
-            return SourceScript.Compile(text!);
+            return SourceScript.Compile(text!, patterns);
         }
 
         var diagnostics = new List<ScriptDiagnostic>();

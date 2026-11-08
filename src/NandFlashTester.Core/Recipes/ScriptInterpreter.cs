@@ -132,7 +132,7 @@ public sealed class ScriptLimitException(string message) : Exception(message);
 
 public static class ScriptInterpreter
 {
-    public static ScriptRun Run(ScriptPlan plan, IScriptDriver driver, ScriptLimits limits, Func<TimeSpan>? elapsed = null, CancellationToken cancellationToken = default)
+    public static ScriptRun Run(ScriptPlan plan, IScriptDriver driver, ScriptLimits limits, Func<TimeSpan>? elapsed = null, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, PatternResource>? patterns = null)
     {
         var started = Stopwatch.StartNew();
         Func<TimeSpan> now = elapsed ?? (() => started.Elapsed);
@@ -194,7 +194,7 @@ public static class ScriptInterpreter
 
             try
             {
-                var classification = Apply(plan, action, driver);
+                var classification = Apply(plan, action, driver, patterns);
                 if (classification is not null)
                 {
                     compared = true;
@@ -271,7 +271,28 @@ public static class ScriptInterpreter
         };
     }
 
-    private static CompareClass? Apply(ScriptPlan plan, ScriptAction action, IScriptDriver driver)
+    private static byte[] PageBytes(ScriptPlan plan, ScriptAction action, IReadOnlyDictionary<string, PatternResource>? patterns)
+    {
+        if (action.PatternResourceId is null)
+        {
+            return PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, action.PatternSeed ?? plan.Seed, action.Block, action.Page ?? 0);
+        }
+
+        if (patterns is null || !patterns.TryGetValue(action.PatternResourceId, out var resource))
+        {
+            throw new ScriptLimitException("图案资源不在本次选择中。");
+        }
+
+        var page = PatternLibrary.Slice(resource, action.PatternBufferIndex);
+        if (page.Length != IsolatedPageDriver.PageSize)
+        {
+            throw new ScriptLimitException("上传页长度与当前比较长度不一致，未执行。");
+        }
+
+        return page;
+    }
+
+    private static CompareClass? Apply(ScriptPlan plan, ScriptAction action, IScriptDriver driver, IReadOnlyDictionary<string, PatternResource>? patterns)
     {
         switch (action.Op)
         {
@@ -279,13 +300,13 @@ public static class ScriptInterpreter
                 driver.Erase(action.Block);
                 return null;
             case "program":
-                driver.Program(action.Block, action.Page ?? 0, PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, action.PatternSeed ?? plan.Seed, action.Block, action.Page ?? 0));
+                driver.Program(action.Block, action.Page ?? 0, PageBytes(plan, action, patterns));
                 return null;
             case "read":
                 _ = driver.Read(action.Block, action.Page ?? 0);
                 return null;
             case "compare":
-                var expected = PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, action.PatternSeed ?? plan.Seed, action.Block, action.Page ?? 0);
+                var expected = PageBytes(plan, action, patterns);
                 var actual = driver.Read(action.Block, action.Page ?? 0);
                 return CompareClassifier.Classify(action.Page ?? 0, expected, actual);
             default:

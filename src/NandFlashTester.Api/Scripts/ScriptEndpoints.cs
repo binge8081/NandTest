@@ -1,6 +1,7 @@
 using System.Text;
 using NandFlashTester.Api.Data;
 using NandFlashTester.Core.Materials;
+using NandFlashTester.Core.Patterns;
 using NandFlashTester.Core.Recipes;
 
 namespace NandFlashTester.Api.Scripts;
@@ -26,9 +27,9 @@ public static class ScriptEndpoints
         executed = false
     };
 
-    public static (int Status, object Body) Check(string? body)
+    public static (int Status, object Body) Check(string? body, IReadOnlyDictionary<string, PatternResource>? patterns = null)
     {
-        var result = ScriptCompiler.Compile(body);
+        var result = ScriptCompiler.Compile(body, patterns);
         return (result.Ok ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest, new
         {
             ok = result.Ok,
@@ -36,7 +37,9 @@ public static class ScriptEndpoints
             hardwareExecuted = false,
             bytesEmitted = 0,
             diagnostics = Diagnostics(result),
-            plan = result.Plan is null ? null : PlanView(result.Plan)
+            plan = result.Plan is null ? null : PlanView(result.Plan),
+            formulaNote = PatternLibrary.FormulaNote,
+            patternSnapshots = Snapshots(result.Plan, patterns)
         });
     }
 
@@ -84,7 +87,7 @@ public static class ScriptEndpoints
             });
     }
 
-    public static (int Status, object Body) Plan(SqliteScriptStore store, string scriptId)
+    public static (int Status, object Body) Plan(SqliteScriptStore store, string scriptId, IReadOnlyDictionary<string, PatternResource>? patterns = null)
     {
         var stored = store.Get(scriptId);
         if (stored is null)
@@ -92,7 +95,7 @@ public static class ScriptEndpoints
             return (StatusCodes.Status404NotFound, new { error = "not_found", message = "脚本不存在。" });
         }
 
-        var compiled = ScriptCompiler.Compile(stored.Body);
+        var compiled = ScriptCompiler.Compile(stored.Body, patterns);
         if (!compiled.Ok || compiled.Plan is null)
         {
             foreach (var diagnostic in compiled.Diagnostics)
@@ -123,6 +126,11 @@ public static class ScriptEndpoints
         }
 
         store.StorePlan(scriptId, compiled.Plan.Name, compiled.Plan.EraseCount, compiled.Plan.ProgramCount, compiled.Plan.ReadCount, compiled.Plan.CompareCount);
+        foreach (var snapshot in Snapshots(compiled.Plan, patterns))
+        {
+            store.AddLog(scriptId, "pattern", null, null, $"图案 {snapshot.Id} 版本 {snapshot.Version} 摘要 {snapshot.Sha256} 页长 {snapshot.PageSize} 缓冲 {snapshot.BufferIndex}。{PatternLibrary.FormulaNote} 未发送。");
+        }
+
         store.AddLog(scriptId, "plan", null, null, $"主机计划已展开。擦除 {compiled.Plan.EraseCount}，写入 {compiled.Plan.ProgramCount}，读回 {compiled.Plan.ReadCount}，比较 {compiled.Plan.CompareCount}。错误计数未统计。硬件未执行。");
         var saved = store.Get(scriptId)!;
         return (StatusCodes.Status200OK, new
@@ -138,6 +146,8 @@ public static class ScriptEndpoints
             findings = run.Findings,
             measured = run.Measured,
             countsAreHostPlan = true,
+            formulaNote = PatternLibrary.FormulaNote,
+            patternSnapshots = Snapshots(compiled.Plan, patterns),
             sent = false,
             script = Summary(saved),
             plan = PlanView(compiled.Plan),
@@ -200,6 +210,27 @@ public static class ScriptEndpoints
         createdAt = script.CreatedAt,
         updatedAt = script.UpdatedAt
     };
+
+    private static IReadOnlyList<PatternSnapshot> Snapshots(ScriptPlan? plan, IReadOnlyDictionary<string, PatternResource>? patterns)
+    {
+        if (plan is null)
+        {
+            return [];
+        }
+
+        return plan.Actions
+            .Where(action => action.PatternResourceId is not null)
+            .Select(action =>
+            {
+                PatternResource? resource = null;
+                patterns?.TryGetValue(action.PatternResourceId!, out resource);
+                return new PatternSnapshot(action.PatternResourceId!, resource?.Version ?? "", resource?.Sha256 ?? "", resource?.PageSize ?? 0, action.PatternBufferIndex);
+            })
+            .Distinct()
+            .ToArray();
+    }
+
+    private sealed record PatternSnapshot(string Id, string Version, string Sha256, int PageSize, int BufferIndex);
 
     private static object PlanView(ScriptPlan plan) => new
     {

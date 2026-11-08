@@ -33,12 +33,14 @@ public class SourceScriptTests
             CMND00 00 00FF 0 0
             SNDAD1 00 00 0
             SETFTR 00 01 00 00 00 00
-            SETBUF /tmp/not-a-pattern
             """);
         Assert.True(result.Ok, string.Join(" ", result.Diagnostics.Select(item => item.Message)));
         Assert.Equal(1, result.Plan!.EraseCount);
         Assert.Equal(0, result.Plan.ProgramCount);
-        Assert.Equal(4, result.Plan.Actions.Count(action => action.Op == "withheld"));
+        Assert.Equal(3, result.Plan.Actions.Count(action => action.Op == "withheld"));
+        var path = ScriptCompiler.Compile("SETBUF /tmp/not-a-pattern\n");
+        Assert.False(path.Ok);
+        Assert.Contains(path.Diagnostics, item => item.Message.Contains("不读取宿主路径", StringComparison.Ordinal));
         var run = ScriptInterpreter.Run(result.Plan, new BlockedScriptDriver(), ScriptLimits.Default);
         Assert.Equal(0, run.BytesEmitted);
         Assert.False(run.Measured);
@@ -141,7 +143,7 @@ public class SourceScriptTests
 
         var buffer = ScriptCompiler.Compile("PGPROG 00 0000 0000 BUFATA\n");
         Assert.False(buffer.Ok);
-        Assert.Contains(buffer.Diagnostics, item => item.Message.Contains("不读取外部文件", StringComparison.Ordinal));
+        Assert.Contains(buffer.Diagnostics, item => item.Message.Contains("已选择的资源", StringComparison.Ordinal));
     }
 
     [Fact]

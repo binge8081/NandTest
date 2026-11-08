@@ -16,7 +16,7 @@ public static class RecipeCapabilities
         new("compare", "BlockedNoDevice", "与实机读回比较要等设备连接。当前不产生实测错误数。"),
         new("step-debug", "NotInLanguage", "单步调试不在当前配置语言里。"),
         new("arbitrary-command", "NotInLanguage", "任意命令不在当前配置语言里。"),
-        new("file-pattern", "NotInLanguage", "文件图案不在当前配置语言里。")
+        new("file-pattern", "HostReady", "页面选择的有限文件可以按资源编号、版本和摘要复用。脚本中的路径不会被读取。这不是旧图案的逐字节等价。")
     ];
 
     public static IReadOnlyList<RecipeCapability> ForRecipe(Recipe? recipe)

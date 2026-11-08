@@ -122,6 +122,14 @@ export const api = {
   materials: () => fetch("/api/materials").then((response) => read<MaterialView>(response)),
   scriptExample: () => fetch("/api/scripts/example").then((response) => read<{ body: string; notes: string }>(response)),
   scriptMap: () => fetch("/api/scripts/map").then((response) => read<{ items: { name: string; status: string; gap: string }[] }>(response)),
+  uploadPattern: async (file: File, pageSize: number, version: string) => {
+    const response = await fetch(`/api/patterns?name=${encodeURIComponent(file.name.replace(/[\\/:]/g, "-"))}&version=${encodeURIComponent(version)}&pageSize=${pageSize}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file
+    });
+    return read<{ id: string; version: string; sha256: string; pageSize: number; pageCount: number; formulaNote: string }>(response);
+  },
   scriptList: () => fetch("/api/scripts").then((response) => read<{ scripts: ScriptDocument[] }>(response)),
   scriptOpen: (scriptId: string) => fetch(`/api/scripts/${scriptId}`).then((response) => read<{ script: ScriptDocument; logs: ScriptLog[] }>(response)),
   scriptCheck: (body: string) =>
