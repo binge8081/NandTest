@@ -117,7 +117,7 @@ public sealed class JobService(SqliteJobStore store, JobQueue queue, ILogger<Job
             return (StatusCodes.Status400BadRequest, new
             {
                 error = "recipe_rejected",
-                message = "配方未通过受限校验，未执行。",
+                message = "配置未通过受限校验，未执行。",
                 executed = false,
                 details = validation.Errors
             });
@@ -258,8 +258,8 @@ public sealed class JobWorker(
         var validation = RecipeValidator.Validate(Encoding.UTF8.GetBytes(job.RecipeSnapshot));
         if (!validation.Ok || validation.Recipe is null)
         {
-            store.SkipUnfinished(jobId, JobStates.Skipped, "配方快照无法再次校验，未执行。");
-            store.Complete(jobId, ClosedLoopOutcome.FailedNow("配方快照校验失败，未执行。"));
+            store.SkipUnfinished(jobId, JobStates.Skipped, "配置快照无法再次校验，未执行。");
+            store.Complete(jobId, ClosedLoopOutcome.FailedNow("配置快照校验失败，未执行。"));
             return;
         }
 
@@ -394,7 +394,7 @@ public static class JobOverview
     private static string NextStep(StoredJob job) => job.Status switch
     {
         JobStates.Succeeded => "可展开逐步结果，或用任务编号下载 CSV 核对计数。不要把模拟通过当成量产结论。",
-        JobStates.Failed => "展开错误位置核对页、字节和位。确认是否为配方里的模拟注入，然后改配方重新运行。",
+        JobStates.Failed => "展开错误位置核对页、字节和位。确认是否为配置里的模拟注入，然后改配置重新运行。",
         JobStates.Cancelled => "后续写入已经停止。若需要完整比较，请重新运行。",
         JobStates.Interrupted => "服务重启时任务未完成，本版不会续跑。请重新运行。",
         JobStates.Running when job.CancelRequested => "请等待状态变为已取消。不要再次写入同一设备。",
@@ -508,7 +508,7 @@ public static class CsvExport
 {
     public static readonly string[] Headers =
     [
-        "产品", "任务编号", "配方名称", "配方版本", "配方哈希", "种子",
+        "产品", "任务编号", "配置名称", "配置版本", "配置哈希", "种子",
         "请求设备", "实际设备", "设备类型", "未知硬件已替换", "替换说明",
         "任务状态", "结论", "错误位数", "错误字节数", "结果性质",
         "步骤序号", "步骤名称", "步骤状态", "步骤覆盖", "步骤说明",

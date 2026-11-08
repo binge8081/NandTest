@@ -75,7 +75,7 @@ public static class SessionEndpoints
             return (StatusCodes.Status400BadRequest, new
             {
                 error = "recipe_rejected",
-                message = "配方未通过校验，未发送。",
+                message = "配置未通过校验，未发送。",
                 executed = false,
                 hardwareAccepted = false,
                 fallbackToFixture = false,

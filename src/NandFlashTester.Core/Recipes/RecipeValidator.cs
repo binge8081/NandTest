@@ -48,17 +48,17 @@ public static partial class RecipeValidator
         var errors = new List<string>();
         if (utf8.Length == 0)
         {
-            return RecipeValidationResult.Reject(["配方为空，未执行。"]);
+            return RecipeValidationResult.Reject(["配置为空，未执行。"]);
         }
 
         if (utf8.Length > MaxBytes)
         {
-            return RecipeValidationResult.Reject(["配方超过 16 KiB，未执行。"]);
+            return RecipeValidationResult.Reject(["配置超过 16 KiB，未执行。"]);
         }
 
         if (utf8.IndexOf((byte)0) >= 0)
         {
-            return RecipeValidationResult.Reject(["配方含有空字节，未执行。"]);
+            return RecipeValidationResult.Reject(["配置含有空字节，未执行。"]);
         }
 
         JObject root;
@@ -70,7 +70,7 @@ public static partial class RecipeValidator
         {
             if (errors.Count == 0)
             {
-                errors.Add("配方不是合法 JSON，未执行。");
+                errors.Add("配置不是合法 JSON，未执行。");
             }
 
             return RecipeValidationResult.Reject(errors);
@@ -407,20 +407,20 @@ public static partial class RecipeValidator
 
             if (!reader.Read())
             {
-                errors.Add("配方为空，未执行。");
+                errors.Add("配置为空，未执行。");
                 return null;
             }
 
             if (reader.TokenType != JsonTokenType.StartObject)
             {
-                errors.Add("配方根节点必须是对象，未执行。");
+                errors.Add("配置根节点必须是对象，未执行。");
                 return null;
             }
 
             var root = ReadObject(ref reader, "$", errors);
             if (root is not null && reader.Read())
             {
-                errors.Add("配方 JSON 末尾有多余内容，未执行。");
+                errors.Add("配置 JSON 末尾有多余内容，未执行。");
             }
 
             return root;
@@ -457,7 +457,7 @@ public static partial class RecipeValidator
 
                 if (Forbidden.Contains(name))
                 {
-                    errors.Add($"字段 {childPath} 被拒绝：受限配方不能携带脚本、命令或可执行内容，未执行。");
+                    errors.Add($"字段 {childPath} 被拒绝：受限配置不能携带脚本、命令或可执行内容，未执行。");
                 }
 
                 var value = ReadValue(ref reader, childPath, errors);

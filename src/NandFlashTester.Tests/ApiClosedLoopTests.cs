@@ -49,7 +49,7 @@ public class ApiClosedLoopTests
             Assert.Equal("成功", row["任务状态"]);
             Assert.Equal("0", row["错误位数"]);
             Assert.Equal("42", row["种子"]);
-            Assert.Equal(job.RootElement.GetProperty("recipeSha256").GetString(), row["配方哈希"]);
+            Assert.Equal(job.RootElement.GetProperty("recipeSha256").GetString(), row["配置哈希"]);
             Assert.Equal(job.RootElement.GetProperty("resultNature").GetString(), row["结果性质"]);
             Assert.Equal("模拟", row["设备类型"]);
             Assert.Equal("否", row["未知硬件已替换"]);
@@ -82,7 +82,7 @@ public class ApiClosedLoopTests
         Assert.Equal("succeeded", reader.GetString(0));
         Assert.Equal(42, reader.GetInt64(1));
         Assert.Equal(job.RootElement.GetProperty("recipeSnapshot").GetString(), reader.GetString(2));
-        Assert.Equal(rows[0]["配方哈希"], reader.GetString(3));
+        Assert.Equal(rows[0]["配置哈希"], reader.GetString(3));
         Assert.Equal(0, reader.GetInt64(4));
         Assert.Equal(rows[0]["结果性质"], reader.GetString(5));
         Assert.Equal("simulation", reader.GetString(6));

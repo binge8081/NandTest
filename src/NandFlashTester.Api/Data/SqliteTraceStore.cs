@@ -232,7 +232,7 @@ public sealed class SqliteTraceStore
     {
         var builder = new System.Text.StringBuilder();
         builder.Append('\uFEFF');
-        builder.AppendLine("产品,记录编号,配方名称,配方哈希,种子,状态,已发送字节,实机通过,证据级别,主机计时,原因");
+        builder.AppendLine("产品,记录编号,配置名称,配置哈希,种子,状态,已发送字节,实机通过,证据级别,主机计时,原因");
         foreach (var attempt in attempts)
         {
             builder.Append(ProductIdentity.Name).Append(',')

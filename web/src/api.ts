@@ -121,6 +121,7 @@ export const api = {
     }).then((response) => read<SessionExecution>(response)),
   materials: () => fetch("/api/materials").then((response) => read<MaterialView>(response)),
   scriptExample: () => fetch("/api/scripts/example").then((response) => read<{ body: string; notes: string }>(response)),
+  scriptMap: () => fetch("/api/scripts/map").then((response) => read<{ items: { name: string; status: string; gap: string }[] }>(response)),
   scriptList: () => fetch("/api/scripts").then((response) => read<{ scripts: ScriptDocument[] }>(response)),
   scriptOpen: (scriptId: string) => fetch(`/api/scripts/${scriptId}`).then((response) => read<{ script: ScriptDocument; logs: ScriptLog[] }>(response)),
   scriptCheck: (body: string) =>

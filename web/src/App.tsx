@@ -34,6 +34,7 @@ function ProductEntry() {
   const [note, setNote] = useState<string | null>(null);
   const [discoveryReason, setDiscoveryReason] = useState("正在读取发现状态。");
   const [materials, setMaterials] = useState<MaterialView | null>(null);
+  const [scriptMap, setScriptMap] = useState<{ name: string; status: string; gap: string }[]>([]);
 
   useEffect(() => {
     api.health().then((health) => setFramework(health.framework)).catch(() => setFramework(""));
@@ -41,6 +42,7 @@ function ProductEntry() {
     api.discovery().then((body) => setDiscoveryReason(body.reason)).catch(() => setDiscoveryReason("无法读取发现状态。没有发送探测。"));
     api.materials().then(setMaterials).catch(() => setMaterials(null));
     api.scriptList().then((body) => setSaved(body.scripts)).catch(() => setSaved([]));
+    api.scriptMap().then((body) => setScriptMap(body.items)).catch(() => setScriptMap([]));
   }, []);
 
   useEffect(() => {
@@ -118,7 +120,7 @@ function ProductEntry() {
       setPlan(planned.plan);
       setLogs(planned.logs);
       setSha(planned.script.sha256);
-      setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。硬件未执行。`);
+      setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。错误计数未统计。硬件未执行。`);
       await refreshList();
     } catch (error) {
       const body = (error as { body?: { diagnostics?: ScriptDiagnostic[] } }).body;
@@ -208,7 +210,7 @@ function ProductEntry() {
             {sha && <p className="fine">脚本哈希 <span className="mono">{sha}</span></p>}
             {plan && (
               <div>
-                <p className="fine">主机计划 · {plan.executionState} · 擦除 {plan.eraseCount} · 写入 {plan.programCount} · 读回 {plan.readCount} · 比较 {plan.compareCount} · 硬件未执行</p>
+                <p className="fine">主机计划 · {plan.executionState} · 擦除 {plan.eraseCount} · 写入 {plan.programCount} · 读回 {plan.readCount} · 比较 {plan.compareCount} · 错误计数未统计 · 硬件未执行</p>
                 <table>
                   <thead><tr><th>序号</th><th>行</th><th>步骤</th><th>块</th><th>页</th><th>状态</th></tr></thead>
                   <tbody>
@@ -244,6 +246,12 @@ function ProductEntry() {
               <button type="button" onClick={() => void stopScript()}>停止</button>
               {scriptId && <a href={`/api/scripts/${scriptId}/export.csv`}>导出</a>}
             </div>
+            <details>
+              <summary>脚本能力对照</summary>
+              <ul>
+                {scriptMap.map((item) => <li key={item.name}><strong>{item.name}</strong> · {item.status} · {item.gap}</li>)}
+              </ul>
+            </details>
           </section>
 
           <section className="panel" id="job-result">

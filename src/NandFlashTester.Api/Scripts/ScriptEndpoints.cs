@@ -1,7 +1,6 @@
 using System.Text;
 using NandFlashTester.Api.Data;
 using NandFlashTester.Core.Materials;
-using NandFlashTester.Core.Platform;
 using NandFlashTester.Core.Recipes;
 
 namespace NandFlashTester.Api.Scripts;
@@ -12,6 +11,13 @@ public sealed record RealDeviceClaim(bool SkuSpecVerified);
 
 public static class ScriptEndpoints
 {
+    public static object Map() => new
+    {
+        hardwareExecuted = false,
+        measured = false,
+        items = ScriptCapabilityMap.Items
+    };
+
     public static object Example() => new
     {
         body = ScriptExamples.PageLoop,
@@ -104,28 +110,30 @@ public static class ScriptEndpoints
             });
         }
 
-        var transport = new BlockedHardwareTransport();
-        foreach (var action in compiled.Plan.Actions)
+        var driver = new BlockedScriptDriver();
+        var run = ScriptInterpreter.Run(compiled.Plan, driver, ScriptLimits.Default);
+        if (run.HardwareExecuted || run.Measured || run.BytesEmitted != 0 || run.ErrorBitCount is not null)
         {
-            var outcome = SessionEngine.BlockBeforeSend(action.Op, transport)
-                ?? throw new InvalidOperationException("脚本计划没有在发送前停下。");
-            if (outcome.Sent || outcome.HardwareAccepted || transport.EmitCount != 0)
-            {
-                throw new InvalidOperationException("脚本计划发出了字节。");
-            }
+            throw new InvalidOperationException("配置计划产生了实测或发送。");
+        }
 
-            store.AddLog(scriptId, "engine", action.Line, null, outcome.Reason);
+        foreach (var step in run.Steps)
+        {
+            store.AddLog(scriptId, "engine", step.Line, null, step.Message);
         }
 
         store.StorePlan(scriptId, compiled.Plan.Name, compiled.Plan.EraseCount, compiled.Plan.ProgramCount, compiled.Plan.ReadCount, compiled.Plan.CompareCount);
-        store.AddLog(scriptId, "plan", null, null, $"主机计划已展开。擦除 {compiled.Plan.EraseCount}，写入 {compiled.Plan.ProgramCount}，读回 {compiled.Plan.ReadCount}，比较 {compiled.Plan.CompareCount}。硬件未执行。");
+        store.AddLog(scriptId, "plan", null, null, $"主机计划已展开。擦除 {compiled.Plan.EraseCount}，写入 {compiled.Plan.ProgramCount}，读回 {compiled.Plan.ReadCount}，比较 {compiled.Plan.CompareCount}。错误计数未统计。硬件未执行。");
         var saved = store.Get(scriptId)!;
         return (StatusCodes.Status200OK, new
         {
             ok = true,
             executed = false,
             hardwareExecuted = false,
-            bytesEmitted = transport.EmitCount,
+            bytesEmitted = run.BytesEmitted,
+            errorBitCount = run.ErrorBitCount,
+            errorCountText = run.ErrorCountText,
+            measured = run.Measured,
             sent = false,
             script = Summary(saved),
             plan = PlanView(compiled.Plan),

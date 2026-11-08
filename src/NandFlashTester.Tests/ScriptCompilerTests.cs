@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using NandFlashTester.Core.Platform;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Tests.Support;
 
@@ -136,6 +137,16 @@ public class ScriptCompilerTests
             var csv = await client.GetStringAsync($"/api/scripts/{scriptId}/export.csv");
             Assert.Contains("领存NFA1000闪存测试仪", csv, StringComparison.Ordinal);
             Assert.Contains("硬件未执行", csv, StringComparison.Ordinal);
+            Assert.Contains("未统计", csv, StringComparison.Ordinal);
+            Assert.Equal("未统计", planBody.RootElement.GetProperty("errorCountText").GetString());
+            Assert.Equal(JsonValueKind.Null, planBody.RootElement.GetProperty("errorBitCount").ValueKind);
+            Assert.False(planBody.RootElement.GetProperty("measured").GetBoolean());
+
+            using var map = JsonDocument.Parse(await (await client.GetAsync("/api/scripts/map")).Content.ReadAsStringAsync());
+            var items = map.RootElement.GetProperty("items").EnumerateArray().ToList();
+            Assert.Contains(items, item => item.GetProperty("name").GetString()!.Contains("错误计数", StringComparison.Ordinal) && item.GetProperty("status").GetString() == "待实机");
+            Assert.Contains(items, item => item.GetProperty("name").GetString()!.Contains("厂商命令", StringComparison.Ordinal) && item.GetProperty("status").GetString() == "未实现");
+            Assert.DoesNotContain(items, item => item.GetProperty("status").GetString()!.Contains("已验收", StringComparison.Ordinal));
             Assert.Contains("stopped_before_send", csv, StringComparison.Ordinal);
         }
 
@@ -148,5 +159,64 @@ public class ScriptCompilerTests
             Assert.False(body.RootElement.GetProperty("script").GetProperty("hardwareExecuted").GetBoolean());
             Assert.Contains(body.RootElement.GetProperty("logs").EnumerateArray(), item => item.GetProperty("kind").GetString() == "stop");
         }
+    }
+
+    [Fact]
+    public void Isolated_driver_counts_bits_without_claiming_a_measurement()
+    {
+        var plan = ScriptCompiler.Compile(ScriptExamples.PageLoop).Plan!;
+        var clean = ScriptInterpreter.Run(plan, new IsolatedPageDriver(), ScriptLimits.Default);
+        Assert.False(clean.Measured);
+        Assert.False(clean.HardwareExecuted);
+        Assert.Equal(0, clean.BytesEmitted);
+        Assert.Equal(0, clean.ErrorBitCount);
+        Assert.Equal(EvidenceClasses.AutomatedTest, clean.EvidenceClass);
+
+        var flipped = ScriptInterpreter.Run(plan, new IsolatedPageDriver((0, 0, 0, 0)), ScriptLimits.Default);
+        Assert.Equal(1, flipped.ErrorBitCount);
+        Assert.False(flipped.Measured);
+        Assert.Contains(flipped.Steps, step => step.Op == "compare" && step.Message.Contains("不是实测", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Blocked_driver_leaves_error_counts_unset_and_emits_nothing()
+    {
+        var plan = ScriptCompiler.Compile(ScriptExamples.PageLoop).Plan!;
+        var run = ScriptInterpreter.Run(plan, new BlockedScriptDriver(), ScriptLimits.Default);
+        Assert.Null(run.ErrorBitCount);
+        Assert.Equal("未统计", run.ErrorCountText);
+        Assert.Equal(0, run.BytesEmitted);
+        Assert.False(run.Measured);
+        Assert.Equal(7, run.Steps.Count);
+        Assert.All(run.Steps, step =>
+        {
+            Assert.Equal("不可执行", step.State);
+            Assert.False(step.HardwareExecuted);
+        });
+        Assert.Contains(run.Steps, step => step.Message.Contains("未发送", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Interpreter_stops_on_step_time_and_memory_limits_and_rejects_host_commands()
+    {
+        var plan = ScriptCompiler.Compile(ScriptExamples.PageLoop).Plan!;
+        var stepped = ScriptInterpreter.Run(plan, new IsolatedPageDriver(), new ScriptLimits(1, 1024, TimeSpan.FromSeconds(2)));
+        Assert.Single(stepped.Steps);
+        Assert.Contains("步数达到上限", stepped.StopReason, StringComparison.Ordinal);
+
+        var timed = ScriptInterpreter.Run(plan, new IsolatedPageDriver(), ScriptLimits.Default, () => TimeSpan.FromSeconds(3));
+        Assert.Empty(timed.Steps);
+        Assert.Contains("时间上限", timed.StopReason, StringComparison.Ordinal);
+
+        var actions = Enumerable.Range(0, 65).Select(index => new ScriptAction(index, 1, "program", 0, index, false, "planned")).ToArray();
+        var wide = new ScriptPlan("宽", 1, "AA", 0, 65, 0, 0, false, "planned", actions);
+        var memory = ScriptInterpreter.Run(wide, new IsolatedPageDriver(), new ScriptLimits(80, 64 * IsolatedPageDriver.PageSize, TimeSpan.FromSeconds(2)));
+        Assert.Contains("页数超过", memory.StopReason, StringComparison.Ordinal);
+        Assert.False(memory.Measured);
+
+        var command = new ScriptPlan("命令", 1, "AA", 0, 0, 0, 0, false, "planned", [new ScriptAction(0, 1, "exec", 0, null, false, "planned")]);
+        var rejected = ScriptInterpreter.Run(command, new IsolatedPageDriver(), ScriptLimits.Default);
+        Assert.Contains("不能执行", rejected.StopReason, StringComparison.Ordinal);
+        Assert.Equal(0, rejected.BytesEmitted);
     }
 }

@@ -158,6 +158,7 @@ app.MapPost("/api/materials/coverage", (CoverageRequest request) =>
 });
 
 app.MapGet("/api/scripts/example", () => Results.Json(ScriptEndpoints.Example()));
+app.MapGet("/api/scripts/map", () => Results.Json(ScriptEndpoints.Map()));
 app.MapPost("/api/scripts/check", (ScriptDocumentRequest request) =>
 {
     var (status, body) = ScriptEndpoints.Check(request.Body);
@@ -248,7 +249,7 @@ app.MapPost("/api/sessions/{id}/execute", async (string id, HttpRequest request,
     var bytes = await ReadBodyAsync(request);
     if (bytes is null)
     {
-        return Results.Json(new { error = "recipe_rejected", message = "配方超过 16 KiB，未发送。", executed = false, hardwareAccepted = false }, statusCode: StatusCodes.Status400BadRequest);
+        return Results.Json(new { error = "recipe_rejected", message = "配置超过 16 KiB，未发送。", executed = false, hardwareAccepted = false }, statusCode: StatusCodes.Status400BadRequest);
     }
 
     var (status, body) = await SessionEndpoints.Execute(store, id, bytes);
@@ -298,7 +299,7 @@ app.MapPost("/api/recipes/validate", async (HttpRequest request) =>
         {
             ok = false,
             executed = false,
-            errors = new[] { "配方超过 16 KiB，未执行。" }
+            errors = new[] { "配置超过 16 KiB，未执行。" }
         }, statusCode: StatusCodes.Status400BadRequest);
     }
 
@@ -396,7 +397,7 @@ app.MapPost("/api/jobs", async (HttpRequest request, JobService jobs) =>
         return Results.Json(new
         {
             error = "recipe_rejected",
-            message = "配方超过 16 KiB，未执行。",
+            message = "配置超过 16 KiB，未执行。",
             executed = false,
             details = Array.Empty<string>()
         }, statusCode: StatusCodes.Status400BadRequest);

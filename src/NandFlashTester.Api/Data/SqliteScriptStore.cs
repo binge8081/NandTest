@@ -283,7 +283,7 @@ public sealed class SqliteScriptStore
     {
         var builder = new StringBuilder();
         builder.Append('\uFEFF');
-        builder.AppendLine("产品,脚本编号,配置名称,状态,擦除计数,写入计数,读回计数,比较计数,硬件已执行,说明");
+        builder.AppendLine("产品,脚本编号,配置名称,状态,擦除计数,写入计数,读回计数,比较计数,错误计数,硬件已执行,说明");
         builder.AppendLine(string.Join(',', new[]
         {
             ProductIdentity.Name,
@@ -294,8 +294,9 @@ public sealed class SqliteScriptStore
             script.ProgramCount.ToString(CultureInfo.InvariantCulture),
             script.ReadCount.ToString(CultureInfo.InvariantCulture),
             script.CompareCount.ToString(CultureInfo.InvariantCulture),
+            "未统计",
             "否",
-            "主机计划。硬件未执行。"
+            "主机计划。硬件未执行。错误计数未统计。"
         }.Select(Cell)));
         builder.AppendLine("日志序号,种类,行,列,硬件已执行,内容");
         foreach (var log in logs)

@@ -8,10 +8,10 @@ public enum PatternKind
 }
 
 /// <summary>
-/// 公开、可复现的页图案。地址按块号和页号展开，不读取外部文件，也不执行配方里的文本。
+/// 公开、可复现的页图案。地址按块号和页号展开，不读取外部文件，也不执行配置里的文本。
 /// increment: byte = (seed + ((block * 65536 + page) * pageSize + offset)) mod 256
 /// prng: 每页用 xorshift32，初值由种子、块号、页号混合；同一输入重复调用结果相同。
-/// constant: 整页填同一个字节，种子仍记入配方以便追溯，但不参与字节计算。
+/// constant: 整页填同一个字节，种子仍记入配置以便追溯，但不参与字节计算。
 /// </summary>
 public static class PatternGenerator
 {

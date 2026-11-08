@@ -397,7 +397,7 @@ public sealed class ClosedLoopExecutor
             ? ""
             : FormattableString.Invariant($" 首个错误：页 {errors[0].Page} 字节 {errors[0].ByteOffset} 位 {errors[0].Bit}，期望 {errors[0].ExpectedHex}，实际 {errors[0].ActualHex}。");
         var injectNote = recipe.Inject.Mode == InjectMode.BitFlip
-            ? " 此差异来自配方声明的模拟注入，不是实机失效。"
+            ? " 此差异来自配置声明的模拟注入，不是实机失效。"
             : "";
         var message = FormattableString.Invariant($"比较 {totalBytes} 字节，不一致位数 {bitCount}。") + first + injectNote;
         var record = new StepRecord(
@@ -425,7 +425,7 @@ public sealed class ClosedLoopExecutor
             var parsed = SimParameterPage.Parse(parameterPage);
             if (!parsed.GeometryEquals(device.Topology))
             {
-                return new StepRecord(StepNames.Identify, JobStates.Failed, "参数页几何与配方拓扑不一致，已停止。", null);
+                return new StepRecord(StepNames.Identify, JobStates.Failed, "参数页几何与配置拓扑不一致，已停止。", null);
             }
 
             var message = $"模拟设备 {device.DeviceId}，厂商 {SimIdentity.Manufacturer}，型号 {SimIdentity.Model}。标识长度 {id.Length.ToString(CultureInfo.InvariantCulture)}，参数页长度 {parameterPage.Length.ToString(CultureInfo.InvariantCulture)}。{SimIdentity.Disclaimer}";
