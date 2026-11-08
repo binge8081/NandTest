@@ -26,7 +26,9 @@ public sealed record ScriptPlan(
     bool HardwareExecuted,
     string ExecutionState,
     IReadOnlyList<ScriptAction> Actions,
-    int? StopWhenBitErrorsAbove = null);
+    int? StopWhenBitErrorsAbove = null,
+    string? CountStopRule = null,
+    int CountStopThreshold = 0);
 
 public sealed record ScriptCompileResult(bool Ok, ScriptPlan? Plan, IReadOnlyList<ScriptDiagnostic> Diagnostics)
 {

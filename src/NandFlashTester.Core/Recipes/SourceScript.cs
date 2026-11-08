@@ -41,8 +41,7 @@ public static class SourceScript
         "SNDAD0", "SNDAD1", "SNDAD2", "SNDAD3", "SNDAD4", "SNDAD5",
         "SETFTR", "GETDAT", "SETDT1", "SETDT2", "SETDT3", "SETDT4", "SETDAT",
         "STATUS", "BUSYTM", "ECCANA",
-        "BKERMC", "PGPGMC", "BKPGMC", "BEMCP2", "BEMCP4", "PPMCP2", "PPMCP4", "BPMCP2", "BPMCP4",
-        "TSTAMP", "SWRSET", "SWWAIT", "WUNTIL"
+        "BKERMC", "PGPGMC", "BKPGMC", "BEMCP2", "BEMCP4", "PPMCP2", "PPMCP4", "BPMCP2", "BPMCP4"
     };
 
     public static bool LooksLike(string? text)
@@ -136,8 +135,8 @@ public static class SourceScript
         var actions = new List<ScriptAction>();
         var address = new Cursor();
         uint seed = 1;
-        int? stopAbove = null;
-        Expand(lines, 0, lines.Count, 0, vars, address, actions, diagnostics, ref seed, ref stopAbove);
+        var stop = new StopHold();
+        Expand(lines, 0, lines.Count, 0, vars, address, actions, diagnostics, ref seed, stop);
         if (diagnostics.Count > 0)
         {
             return ScriptCompileResult.Reject(diagnostics);
@@ -160,10 +159,12 @@ public static class SourceScript
             false,
             "planned",
             numbered,
-            stopAbove), []);
+            stop.BitAbove,
+            stop.Rule,
+            stop.Threshold), []);
     }
 
-    private static int Expand(List<CodeLine> lines, int start, int count, int depth, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, ref int? stopAbove)
+    private static int Expand(List<CodeLine> lines, int start, int count, int depth, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
     {
         var index = start;
         var consumed = 0;
@@ -205,7 +206,7 @@ public static class SourceScript
 
                 for (var time = 0; time < times; time++)
                 {
-                    Expand(lines, index + 1, (int)bodyCount, depth + 1, vars, cursor, actions, diagnostics, ref seed, ref stopAbove);
+                    Expand(lines, index + 1, (int)bodyCount, depth + 1, vars, cursor, actions, diagnostics, ref seed, stop);
                     if (diagnostics.Count > 0 || actions.Count > ScriptCompiler.MaxExpanded)
                     {
                         if (actions.Count > ScriptCompiler.MaxExpanded && diagnostics.Count == 0)
@@ -222,7 +223,7 @@ public static class SourceScript
                 continue;
             }
 
-            Emit(line, op, vars, cursor, actions, diagnostics, ref seed, ref stopAbove);
+            Emit(line, op, vars, cursor, actions, diagnostics, ref seed, stop);
             if (actions.Count > ScriptCompiler.MaxExpanded)
             {
                 diagnostics.Add(At(line.Number, line.Tokens[0].Column, $"展开后的步骤超过 {ScriptCompiler.MaxExpanded}，未执行。"));
@@ -236,7 +237,7 @@ public static class SourceScript
         return consumed;
     }
 
-    private static void Emit(CodeLine line, string op, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, ref int? stopAbove)
+    private static void Emit(CodeLine line, string op, uint[] vars, Cursor cursor, List<ScriptAction> actions, List<ScriptDiagnostic> diagnostics, ref uint seed, StopHold stop)
     {
         if (op is "VSET01" or "VADD01" or "VMUL01" or "VSET02" or "VADD02" or "VMUL02" or "VSET04" or "VADD04" or "VMUL04" or "VSET08" or "VADD08" or "VMUL08")
         {
@@ -268,18 +269,67 @@ public static class SourceScript
                 return;
             }
 
-            if (code == 0x22)
+            if (code is 0x00 or 0x0F or 0x1F or 0x2F)
             {
-                if (line.Tokens.Count != 3 || !Hex(line.Tokens[2].Text, out var threshold) || threshold > int.MaxValue)
+                if (code is 0x00 or 0x1F && stop.Rule?.StartsWith("byte", StringComparison.Ordinal) == true)
                 {
-                    diagnostics.Add(At(line.Number, line.Tokens[0].Column, "CNDSTP 0022 需要位错误上限，未执行。"));
-                    return;
+                    stop.Rule = null;
                 }
 
-                stopAbove = (int)threshold;
+                if (code is 0x00 or 0x2F && stop.Rule?.StartsWith("bit", StringComparison.Ordinal) == true)
+                {
+                    stop.Rule = null;
+                    stop.BitAbove = null;
+                }
+
+                actions.Add(new ScriptAction(actions.Count, line.Number, "mark", 0, null, false, "planned"));
+                return;
             }
 
-            actions.Add(new ScriptAction(actions.Count, line.Number, "withheld", 0, null, false, "planned"));
+            if (code is 0x01 or 0x02 or 0x03)
+            {
+                actions.Add(new ScriptAction(actions.Count, line.Number, "withheld", 0, null, false, "planned"));
+                return;
+            }
+
+            var rule = code switch
+            {
+                0x11 => "byte=",
+                0x12 => "byte>",
+                0x13 => "byte<",
+                0x21 => "bit=",
+                0x22 => "bit>",
+                0x23 => "bit<",
+                _ => null
+            };
+            if (rule is null || line.Tokens.Count != 3 || !Hex(line.Tokens[2].Text, out var threshold) || threshold > int.MaxValue)
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[0].Column, "CNDSTP 条件码无法用于主机错误计数，未执行。"));
+                return;
+            }
+
+            stop.Rule = rule;
+            stop.Threshold = (int)threshold;
+            stop.BitAbove = rule == "bit>" ? (int)threshold : null;
+            actions.Add(new ScriptAction(actions.Count, line.Number, "mark", 0, null, false, "planned"));
+            return;
+        }
+
+        if (op is "TSTAMP" or "SWRSET")
+        {
+            actions.Add(new ScriptAction(actions.Count, line.Number, "mark", 0, null, false, "planned"));
+            return;
+        }
+
+        if (op is "SWWAIT" or "WUNTIL")
+        {
+            if (line.Tokens.Count != 2 || !Hex(line.Tokens[1].Text, out var seconds) || seconds > 2)
+            {
+                diagnostics.Add(At(line.Number, line.Tokens[0].Column, "主机等待只接受不超过 2 秒的十六进制时间，未执行。"));
+                return;
+            }
+
+            actions.Add(new ScriptAction(actions.Count, line.Number, "wait", 0, null, false, "planned"));
             return;
         }
 
@@ -379,16 +429,22 @@ public static class SourceScript
 
     private static uint? PatternSeed(CodeLine line, uint[] vars, List<ScriptDiagnostic> diagnostics, ref uint seed)
     {
-        var marker = line.Tokens.FindIndex(token => token.Text.Equals("RANDOM", StringComparison.OrdinalIgnoreCase) || token.Text.Equals("INCRMT", StringComparison.OrdinalIgnoreCase) || token.Text.Equals("BUFFER", StringComparison.OrdinalIgnoreCase));
+        var marker = line.Tokens.FindIndex(token =>
+            token.Text.Equals("RANDOM", StringComparison.OrdinalIgnoreCase)
+            || token.Text.Equals("INCRMT", StringComparison.OrdinalIgnoreCase)
+            || token.Text.Equals("ICROVL", StringComparison.OrdinalIgnoreCase)
+            || token.Text.Equals("RDMOVL", StringComparison.OrdinalIgnoreCase)
+            || token.Text.Equals("BUFFER", StringComparison.OrdinalIgnoreCase)
+            || token.Text.Equals("BUFATA", StringComparison.OrdinalIgnoreCase));
         if (marker < 0)
         {
             return null;
         }
 
         var kind = line.Tokens[marker].Text.ToUpperInvariant();
-        if (kind == "BUFFER")
+        if (kind is "BUFFER" or "BUFATA")
         {
-            diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "BUFFER 图案不读取外部文件，未执行。"));
+            diagnostics.Add(At(line.Number, line.Tokens[marker].Column, "缓冲图案不读取外部文件，未执行。"));
             return null;
         }
 
@@ -421,6 +477,13 @@ public static class SourceScript
 
     private static ScriptDiagnostic At(int line, int column, string message) =>
         new(line, column, $"第 {line} 行第 {column} 列：{message}");
+
+    private sealed class StopHold
+    {
+        public int? BitAbove { get; set; }
+        public string? Rule { get; set; }
+        public int Threshold { get; set; }
+    }
 
     private sealed class Cursor
     {

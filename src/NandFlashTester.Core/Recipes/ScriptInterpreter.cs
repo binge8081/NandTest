@@ -139,6 +139,7 @@ public static class ScriptInterpreter
         var steps = new List<ScriptStepLog>();
         var findings = new List<CompareFinding>();
         var errorBits = 0;
+        var errorBytes = 0;
         var compared = false;
         var mismatch = false;
         string? stop = null;
@@ -169,9 +170,12 @@ public static class ScriptInterpreter
                 continue;
             }
 
-            if (action.Op == "wait")
+            if (action.Op is "wait" or "mark")
             {
-                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "主机计时", "等待只计入主机时间上限，没有休眠，也没有发送。", null, false, "not_executed"));
+                var note = action.Op == "mark"
+                    ? "主机记下一笔时间标记。没有写外部结果文件，也没有发送。"
+                    : "等待只计入主机时间上限，没有休眠，也没有发送。";
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "主机计时", note, null, false, "not_executed"));
                 if (now() > limits.MaxDuration)
                 {
                     stop = "超过时间上限，后续步骤没有执行。";
@@ -195,10 +199,11 @@ public static class ScriptInterpreter
                 {
                     compared = true;
                     errorBits += classification.BitCount ?? 0;
+                    errorBytes += classification.ByteCount ?? 0;
                     mismatch |= classification.Class == "bit_mismatch";
-                    if (plan.StopWhenBitErrorsAbove is int limit && errorBits > limit)
+                    if (StopMatched(plan, errorBits, errorBytes))
                     {
-                        stop = "位错误数超过停止条件，后续步骤没有执行。";
+                        stop = "错误数达到停止条件，后续步骤没有执行。";
                     }
                     foreach (var finding in classification.Findings)
                     {
@@ -242,6 +247,28 @@ public static class ScriptInterpreter
             steps,
             findings,
             stop ?? "计划走完。硬件未执行。");
+    }
+
+    private static bool StopMatched(ScriptPlan plan, int bits, int bytes)
+    {
+        var rule = plan.CountStopRule;
+        var threshold = plan.CountStopThreshold;
+        if (rule is null && plan.StopWhenBitErrorsAbove is int above)
+        {
+            rule = "bit>";
+            threshold = above;
+        }
+
+        return rule switch
+        {
+            "bit>" => bits > threshold,
+            "bit<" => bits < threshold,
+            "bit=" => bits == threshold,
+            "byte>" => bytes > threshold,
+            "byte<" => bytes < threshold,
+            "byte=" => bytes == threshold,
+            _ => false
+        };
     }
 
     private static CompareClass? Apply(ScriptPlan plan, ScriptAction action, IScriptDriver driver)
