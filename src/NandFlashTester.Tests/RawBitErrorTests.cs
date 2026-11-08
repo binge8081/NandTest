@@ -18,11 +18,15 @@ public class RawBitErrorTests
         Assert.False(synthetic.ThresholdDecided);
         Assert.False(synthetic.Measured);
 
-        var measured = RawBitError.Compute("measured", 1000, 8);
-        Assert.Equal(0.008, measured.RawRate);
-        Assert.True(measured.Measured);
-        Assert.Equal("未统计", measured.Uber);
-        Assert.False(measured.ThresholdDecided);
+        var claimed = RawBitError.Compute("measured", 1000, 8);
+        Assert.Null(claimed.RawRate);
+        Assert.False(claimed.Measured);
+        Assert.Contains("未验证", claimed.Reason, StringComparison.Ordinal);
+        Assert.False(RawBitError.HasMeasurementEvidence(0, "evidence-1"));
+        var linked = RawBitError.Compute("measured", 1000, 8, measurementEvidenceLinked: true);
+        Assert.Equal(0.008, linked.RawRate);
+        Assert.True(linked.Measured);
+        Assert.Equal("未统计", linked.Uber);
 
         var missing = RawBitError.Compute("synthetic", 0, 1);
         Assert.Null(missing.RawRate);

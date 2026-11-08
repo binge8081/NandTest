@@ -162,6 +162,7 @@ export const api = {
     fetch(`/api/scripts/${scriptId}/plan`, { method: "POST" }).then((response) =>
       read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; plan: ScriptPlanView; logs: ScriptLog[]; script: ScriptDocument }>(response)
     ),
+  snapshots: () => fetch("/api/run-snapshots").then((response) => read<{ hardwareRecovery: boolean; snapshots: { snapshotId: string; scriptId: string; status: string; errorClass: string; bytesEmitted: number; hardwareRecovery: boolean; patternShas: string; reason: string }[] }>(response)),
   scriptStop: (scriptId: string) =>
     fetch(`/api/scripts/${scriptId}/stop`, { method: "POST" }).then((response) =>
       read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; script: ScriptDocument; logs: ScriptLog[] }>(response)

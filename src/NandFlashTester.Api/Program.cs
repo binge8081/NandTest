@@ -258,7 +258,7 @@ app.MapGet("/api/scripts/{id}/export.csv", (string id, SqliteScriptStore store) 
     var script = store.Get(id);
     return script is null
         ? Results.Json(new { error = "not_found" }, statusCode: StatusCodes.Status404NotFound)
-        : Results.File(Encoding.UTF8.GetBytes(SqliteScriptStore.Csv(script, store.Logs(id))), "text/csv; charset=utf-8", $"{id}.csv");
+        : Results.File(Encoding.UTF8.GetBytes(SqliteScriptStore.Csv(script, store.Logs(id), store.Snapshots().Where(item => item.ScriptId == id).ToArray())), "text/csv; charset=utf-8", $"{id}.csv");
 });
 
 app.MapGet("/api/meta", () => Results.Json(new
@@ -384,9 +384,16 @@ app.MapGet("/api/parameters", (SqliteTraceStore store) => Results.Json(new
 
 app.MapPost("/api/analysis/raw-bit-error", (RawBitErrorRequest request) =>
 {
-    var report = RawBitError.Compute(request.Source, request.ComparedBits, request.ErrorBits);
+    var linked = RawBitError.HasMeasurementEvidence(0, request.EvidenceId);
+    var report = RawBitError.Compute(request.Source, request.ComparedBits, request.ErrorBits, linked);
     return Results.Json(report);
 });
+app.MapPost("/api/policy/evaluate", (PolicyRequest request) => Results.Json(UnapprovedPolicy.Evaluate(request.Domain, request.Name)));
+app.MapGet("/api/run-snapshots", (SqliteScriptStore store) => Results.Json(new
+{
+    hardwareRecovery = false,
+    snapshots = store.Snapshots()
+}));
 
 app.MapPost("/api/parameters/import", (ParameterImportRequest request, SqliteTraceStore store) =>
 {

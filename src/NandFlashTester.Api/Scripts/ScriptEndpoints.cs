@@ -120,18 +120,21 @@ public static class ScriptEndpoints
             throw new InvalidOperationException("配置计划产生了实测或发送。");
         }
 
-        foreach (var step in run.Steps)
-        {
-            store.AddLog(scriptId, "engine", step.Line, null, step.Message);
-        }
-
-        store.StorePlan(scriptId, compiled.Plan.Name, compiled.Plan.EraseCount, compiled.Plan.ProgramCount, compiled.Plan.ReadCount, compiled.Plan.CompareCount);
-        foreach (var snapshot in Snapshots(compiled.Plan, patterns))
-        {
-            store.AddLog(scriptId, "pattern", null, null, $"图案 {snapshot.Id} 版本 {snapshot.Version} 摘要 {snapshot.Sha256} 页长 {snapshot.PageSize} 缓冲 {snapshot.BufferIndex}。{PatternLibrary.FormulaNote} 未发送。");
-        }
-
-        store.AddLog(scriptId, "plan", null, null, $"主机计划已展开。擦除 {compiled.Plan.EraseCount}，写入 {compiled.Plan.ProgramCount}，读回 {compiled.Plan.ReadCount}，比较 {compiled.Plan.CompareCount}。错误计数未统计。硬件未执行。");
+        var linked = Snapshots(compiled.Plan, patterns);
+        var messages = run.Steps.Select(step => step.Message).ToList();
+        messages.AddRange(linked.Select(snapshot => $"图案 {snapshot.Id} 版本 {snapshot.Version} 摘要 {snapshot.Sha256} 页长 {snapshot.PageSize} 缓冲 {snapshot.BufferIndex}。{PatternLibrary.FormulaNote} 未发送。"));
+        messages.Add($"主机计划已展开。擦除 {compiled.Plan.EraseCount}，写入 {compiled.Plan.ProgramCount}，读回 {compiled.Plan.ReadCount}，比较 {compiled.Plan.CompareCount}。错误计数未统计。硬件未执行。");
+        var committed = store.CommitPlan(
+            scriptId,
+            stored.Sha256,
+            compiled.Plan.Name,
+            compiled.Plan.EraseCount,
+            compiled.Plan.ProgramCount,
+            compiled.Plan.ReadCount,
+            compiled.Plan.CompareCount,
+            string.Join(' ', linked.Select(item => item.Id).Distinct()),
+            string.Join(' ', linked.Select(item => item.Sha256).Distinct()),
+            messages);
         var saved = store.Get(scriptId)!;
         return (StatusCodes.Status200OK, new
         {
@@ -147,7 +150,18 @@ public static class ScriptEndpoints
             measured = run.Measured,
             countsAreHostPlan = true,
             formulaNote = PatternLibrary.FormulaNote,
-            patternSnapshots = Snapshots(compiled.Plan, patterns),
+            patternSnapshots = linked,
+            runSnapshot = new
+            {
+                snapshotId = committed.SnapshotId,
+                status = committed.Status,
+                errorClass = committed.ErrorClass,
+                bytesEmitted = committed.BytesEmitted,
+                hardwareRecovery = committed.HardwareRecovery,
+                patternIds = committed.PatternIds,
+                patternShas = committed.PatternShas,
+                reason = committed.Reason
+            },
             sent = false,
             script = Summary(saved),
             plan = PlanView(compiled.Plan),

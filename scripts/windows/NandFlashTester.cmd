@@ -5,6 +5,16 @@ if not exist "NandFlashTester.Api.exe" (
   echo 未找到 NandFlashTester.Api.exe。请先使用已发布的 win-x64 文件夹。
   exit /b 1
 )
+tasklist /FI "IMAGENAME eq NandFlashTester.Api.exe" | find /I "NandFlashTester.Api.exe" >nul
+if not errorlevel 1 (
+  echo 端口 5080 已被占用，或上位机已在运行。请先运行 stop.ps1，不要再开一个实例。
+  exit /b 1
+)
+netstat -ano | findstr /C:":5080" >nul
+if not errorlevel 1 (
+  echo 端口 5080 已被占用，或上位机已在运行。请先运行 stop.ps1，不要再开一个实例。
+  exit /b 1
+)
 start "" /b NandFlashTester.Api.exe
 timeout /t 2 /nobreak >nul
 start "" http://127.0.0.1:5080/

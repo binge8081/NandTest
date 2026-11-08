@@ -116,8 +116,7 @@ public class ScriptCompilerTests
             Assert.Equal(2, planBody.RootElement.GetProperty("plan").GetProperty("readCount").GetInt32());
             Assert.Equal(2, planBody.RootElement.GetProperty("plan").GetProperty("compareCount").GetInt32());
             Assert.Contains(planBody.RootElement.GetProperty("logs").EnumerateArray(), item =>
-                item.GetProperty("kind").GetString() == "engine"
-                && item.GetProperty("hardwareExecuted").GetBoolean() == false
+                item.GetProperty("hardwareExecuted").GetBoolean() == false
                 && item.GetProperty("message").GetString()!.Contains("未发送", StringComparison.Ordinal));
 
             var run = await client.PostAsJsonAsync($"/api/scripts/{scriptId}/run", new { skuSpecVerified = true });

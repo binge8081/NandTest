@@ -33,6 +33,26 @@ public sealed class StoredScriptLog
     public required string CreatedAt { get; init; }
 }
 
+public sealed class StoredRunSnapshot
+{
+    public required string SnapshotId { get; init; }
+    public required string ScriptId { get; init; }
+    public required string ScriptSha256 { get; init; }
+    public required string Status { get; init; }
+    public int EraseCount { get; init; }
+    public int ProgramCount { get; init; }
+    public int ReadCount { get; init; }
+    public int CompareCount { get; init; }
+    public required string ErrorClass { get; init; }
+    public int BytesEmitted { get; init; }
+    public required string PatternIds { get; init; }
+    public required string PatternShas { get; init; }
+    public bool HardwareRecovery { get; init; }
+    public required string Reason { get; init; }
+    public required string CreatedAt { get; init; }
+    public required string UpdatedAt { get; init; }
+}
+
 public sealed class SqliteScriptStore
 {
     private readonly string _path;
@@ -78,8 +98,39 @@ public sealed class SqliteScriptStore
                     hardware_executed INTEGER NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS run_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    script_id TEXT NOT NULL,
+                    script_sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    erase_count INTEGER NOT NULL,
+                    program_count INTEGER NOT NULL,
+                    read_count INTEGER NOT NULL,
+                    compare_count INTEGER NOT NULL,
+                    error_class TEXT NOT NULL,
+                    bytes_emitted INTEGER NOT NULL,
+                    pattern_ids TEXT NOT NULL,
+                    pattern_shas TEXT NOT NULL,
+                    hardware_recovery INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """;
             command.ExecuteNonQuery();
+            using var reconcile = connection.CreateCommand();
+            reconcile.CommandText =
+                """
+                UPDATE run_snapshots
+                SET status = 'interrupted_before_send',
+                    bytes_emitted = 0,
+                    hardware_recovery = 0,
+                    reason = '主机进程中断发生在发送之前。这不是硬件断点续传。',
+                    updated_at = $now
+                WHERE status = 'preparing'
+                """;
+            reconcile.Parameters.AddWithValue("$now", Now());
+            reconcile.ExecuteNonQuery();
         }
     }
 
@@ -149,6 +200,135 @@ public sealed class SqliteScriptStore
 
         AddLog(scriptId, "save", null, null, "已保存。先前的主机计划作废。硬件未执行。");
         return Get(scriptId);
+    }
+
+    public StoredRunSnapshot CommitPlan(string scriptId, string scriptSha, string name, int erase, int program, int read, int compare, string patternIds, string patternShas, IReadOnlyList<string> logMessages)
+    {
+        var now = Now();
+        var snapshot = new StoredRunSnapshot
+        {
+            SnapshotId = "snap-" + Guid.NewGuid().ToString("N"),
+            ScriptId = scriptId,
+            ScriptSha256 = scriptSha,
+            Status = "planned_not_sent",
+            EraseCount = erase,
+            ProgramCount = program,
+            ReadCount = read,
+            CompareCount = compare,
+            ErrorClass = "not_executed",
+            BytesEmitted = 0,
+            PatternIds = patternIds,
+            PatternShas = patternShas,
+            HardwareRecovery = false,
+            Reason = "主机计划已提交。没有发送，也不是硬件恢复。",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using (var insert = connection.CreateCommand())
+            {
+                insert.Transaction = transaction;
+                insert.CommandText =
+                    """
+                    INSERT INTO run_snapshots (
+                        snapshot_id, script_id, script_sha256, status, erase_count, program_count, read_count, compare_count,
+                        error_class, bytes_emitted, pattern_ids, pattern_shas, hardware_recovery, reason, created_at, updated_at
+                    ) VALUES (
+                        $sid, $id, $sha, 'preparing', $erase, $program, $read, $compare,
+                        'not_executed', 0, $pids, $pshas, 0, $reason, $at, $at
+                    )
+                    """;
+                BindSnapshot(insert, snapshot);
+                insert.ExecuteNonQuery();
+            }
+
+            foreach (var message in logMessages)
+            {
+                using var log = connection.CreateCommand();
+                log.Transaction = transaction;
+                log.CommandText = "INSERT INTO script_logs (script_id, kind, line, source_column, message, hardware_executed, created_at) VALUES ($id, 'plan', NULL, NULL, $message, 0, $at)";
+                log.Parameters.AddWithValue("$id", scriptId);
+                log.Parameters.AddWithValue("$message", message);
+                log.Parameters.AddWithValue("$at", now);
+                log.ExecuteNonQuery();
+            }
+
+            using (var finish = connection.CreateCommand())
+            {
+                finish.Transaction = transaction;
+                finish.CommandText = "UPDATE run_snapshots SET status = 'planned_not_sent', updated_at = $at WHERE snapshot_id = $sid";
+                finish.Parameters.AddWithValue("$sid", snapshot.SnapshotId);
+                finish.Parameters.AddWithValue("$at", now);
+                finish.ExecuteNonQuery();
+            }
+
+            using (var document = connection.CreateCommand())
+            {
+                document.Transaction = transaction;
+                document.CommandText =
+                    """
+                    UPDATE script_documents
+                    SET name = $name, status = 'planned', erase_count = $erase, program_count = $program,
+                        read_count = $read, compare_count = $compare, hardware_executed = 0, updated_at = $at
+                    WHERE script_id = $id
+                    """;
+                document.Parameters.AddWithValue("$id", scriptId);
+                document.Parameters.AddWithValue("$name", name);
+                document.Parameters.AddWithValue("$erase", erase);
+                document.Parameters.AddWithValue("$program", program);
+                document.Parameters.AddWithValue("$read", read);
+                document.Parameters.AddWithValue("$compare", compare);
+                document.Parameters.AddWithValue("$at", now);
+                document.ExecuteNonQuery();
+            }
+
+            transaction.Commit();
+        }
+
+        return snapshot;
+    }
+
+    public void LeavePreparingForCrash(string scriptId, string scriptSha)
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO run_snapshots (
+                    snapshot_id, script_id, script_sha256, status, erase_count, program_count, read_count, compare_count,
+                    error_class, bytes_emitted, pattern_ids, pattern_shas, hardware_recovery, reason, created_at, updated_at
+                ) VALUES ($sid, $id, $sha, 'preparing', 0, 0, 0, 0, 'not_executed', 0, '', '', 0, '尚未提交。', $at, $at)
+                """;
+            var now = Now();
+            command.Parameters.AddWithValue("$sid", "snap-crash");
+            command.Parameters.AddWithValue("$id", scriptId);
+            command.Parameters.AddWithValue("$sha", scriptSha);
+            command.Parameters.AddWithValue("$at", now);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    public IReadOnlyList<StoredRunSnapshot> Snapshots()
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM run_snapshots ORDER BY created_at";
+            var rows = new List<StoredRunSnapshot>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add(MapSnapshot(reader));
+            }
+
+            return rows;
+        }
     }
 
     public void StorePlan(string scriptId, string name, int erase, int program, int read, int compare)
@@ -279,7 +459,7 @@ public sealed class SqliteScriptStore
         }
     }
 
-    public static string Csv(StoredScript script, IReadOnlyList<StoredScriptLog> logs)
+    public static string Csv(StoredScript script, IReadOnlyList<StoredScriptLog> logs, IReadOnlyList<StoredRunSnapshot>? snapshots = null)
     {
         var builder = new StringBuilder();
         builder.Append('\uFEFF');
@@ -313,8 +493,60 @@ public sealed class SqliteScriptStore
             }.Select(Cell)));
         }
 
+        builder.AppendLine("快照编号,状态,脚本摘要,错误分类,发送字节,硬件恢复,图案编号,图案摘要,说明");
+        foreach (var snapshot in snapshots ?? [])
+        {
+            builder.AppendLine(string.Join(',', new[]
+            {
+                snapshot.SnapshotId,
+                snapshot.Status,
+                snapshot.ScriptSha256,
+                snapshot.ErrorClass,
+                snapshot.BytesEmitted.ToString(CultureInfo.InvariantCulture),
+                snapshot.HardwareRecovery ? "是" : "否",
+                snapshot.PatternIds,
+                snapshot.PatternShas,
+                snapshot.Reason
+            }.Select(Cell)));
+        }
+
         return builder.ToString();
     }
+
+    private static void BindSnapshot(SqliteCommand command, StoredRunSnapshot snapshot)
+    {
+        command.Parameters.AddWithValue("$sid", snapshot.SnapshotId);
+        command.Parameters.AddWithValue("$id", snapshot.ScriptId);
+        command.Parameters.AddWithValue("$sha", snapshot.ScriptSha256);
+        command.Parameters.AddWithValue("$erase", snapshot.EraseCount);
+        command.Parameters.AddWithValue("$program", snapshot.ProgramCount);
+        command.Parameters.AddWithValue("$read", snapshot.ReadCount);
+        command.Parameters.AddWithValue("$compare", snapshot.CompareCount);
+        command.Parameters.AddWithValue("$pids", snapshot.PatternIds);
+        command.Parameters.AddWithValue("$pshas", snapshot.PatternShas);
+        command.Parameters.AddWithValue("$reason", snapshot.Reason);
+        command.Parameters.AddWithValue("$at", snapshot.CreatedAt);
+    }
+
+    private static StoredRunSnapshot MapSnapshot(SqliteDataReader reader) => new()
+    {
+        SnapshotId = reader.GetString(reader.GetOrdinal("snapshot_id")),
+        ScriptId = reader.GetString(reader.GetOrdinal("script_id")),
+        ScriptSha256 = reader.GetString(reader.GetOrdinal("script_sha256")),
+        Status = reader.GetString(reader.GetOrdinal("status")),
+        EraseCount = (int)reader.GetInt64(reader.GetOrdinal("erase_count")),
+        ProgramCount = (int)reader.GetInt64(reader.GetOrdinal("program_count")),
+        ReadCount = (int)reader.GetInt64(reader.GetOrdinal("read_count")),
+        CompareCount = (int)reader.GetInt64(reader.GetOrdinal("compare_count")),
+        ErrorClass = reader.GetString(reader.GetOrdinal("error_class")),
+        BytesEmitted = (int)reader.GetInt64(reader.GetOrdinal("bytes_emitted")),
+        PatternIds = reader.GetString(reader.GetOrdinal("pattern_ids")),
+        PatternShas = reader.GetString(reader.GetOrdinal("pattern_shas")),
+        HardwareRecovery = reader.GetInt64(reader.GetOrdinal("hardware_recovery")) != 0,
+        Reason = reader.GetString(reader.GetOrdinal("reason")),
+        CreatedAt = reader.GetString(reader.GetOrdinal("created_at")),
+        UpdatedAt = reader.GetString(reader.GetOrdinal("updated_at"))
+    };
 
     private static void Bind(SqliteCommand command, StoredScript stored)
     {

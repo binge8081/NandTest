@@ -34,6 +34,7 @@ function ProductEntry() {
   const [note, setNote] = useState<string | null>(null);
   const [discoveryReason, setDiscoveryReason] = useState("正在读取发现状态。");
   const [materials, setMaterials] = useState<MaterialView | null>(null);
+  const [snapshots, setSnapshots] = useState<{ snapshotId: string; status: string; errorClass: string; bytesEmitted: number; hardwareRecovery: boolean; patternShas: string; reason: string }[]>([]);
   const [scriptMap, setScriptMap] = useState<{ name: string; status: string; gap: string }[]>([]);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ function ProductEntry() {
     api.materials().then(setMaterials).catch(() => setMaterials(null));
     api.scriptList().then((body) => setSaved(body.scripts)).catch(() => setSaved([]));
     api.scriptMap().then((body) => setScriptMap(body.items)).catch(() => setScriptMap([]));
+    api.snapshots().then((body) => setSnapshots(body.snapshots)).catch(() => setSnapshots([]));
   }, []);
 
   useEffect(() => {
@@ -122,6 +124,7 @@ function ProductEntry() {
       setSha(planned.script.sha256);
       setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。错误计数未统计，错误分类未执行。这不是已完成的擦写读。硬件未执行。`);
       await refreshList();
+      setSnapshots((await api.snapshots()).snapshots);
     } catch (error) {
       const body = (error as { body?: { diagnostics?: ScriptDiagnostic[] } }).body;
       setDiagnostics(body?.diagnostics ?? [{ line: 1, column: 1, message: "计划没有展开，硬件未执行。" }]);
@@ -263,8 +266,26 @@ function ProductEntry() {
       </div>
 
       <section className="panel history">
-        <h2>结果记录</h2>
-        <p className="fine">没有实测记录。未连接设备时不会生成实测指标。</p>
+        <h2>运行快照</h2>
+        <p className="fine">这些是主机计划快照。发送字节为 0。主机中断不是硬件断点续传，也没有实测指标。</p>
+        {snapshots.length === 0 && <p>还没有运行快照。</p>}
+        {snapshots.length > 0 && (
+          <table>
+            <thead><tr><th>快照</th><th>状态</th><th>错误分类</th><th>发送字节</th><th>硬件恢复</th><th>图案摘要</th></tr></thead>
+            <tbody>
+              {snapshots.map((item) => (
+                <tr key={item.snapshotId}>
+                  <td className="mono">{item.snapshotId}</td>
+                  <td>{item.status}</td>
+                  <td>{item.errorClass}</td>
+                  <td>{item.bytesEmitted}</td>
+                  <td>{item.hardwareRecovery ? "是" : "否"}</td>
+                  <td className="mono">{item.patternShas || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <footer>
