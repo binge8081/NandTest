@@ -19,7 +19,7 @@ public static class PhaseScope
     public const bool SslCompatibilityLayer = false;
     public const string LocalDeliveryTarget = @"D:\NandFlashTester";
     public const string ReimplementationPolicy = "旧功能全部按合法资料独立重写，并进入同一套新硬件应用。不建旧二进制、旧 DLL、旧数据格式或旧 SSL 语法兼容层，也不以 SSL 门禁阻塞新功能。禁止读取或导入反编译和旧实现。";
-    public const string ExpertEntryLocation = "简单操作和专家受限 JSON 的编辑、校验、执行、进度、结果都在同一测试页。这是统一的新配方入口，不是 SSL 兼容层，也不是完整专业脚本。";
+    public const string ExpertEntryLocation = "简单操作和专家配方的编辑、校验、执行、进度、结果都在同一测试页。当前配方校验不是完整专业脚本。";
 
     public static IReadOnlyList<string> ConflictsForBao { get; } =
     [
@@ -46,8 +46,8 @@ public static class PhaseScope
         Item("F04", "忙时间与应力", "P0", "新平台", "待输入：计时语义未提供。待实机验证。不填忙时间。"),
         Item("F05", "错误率ECC", "P0", "新平台", "待输入：合法 ECC 资料未提供。不实现厂商算法。"),
         Item("F06", "规模速率", "P0", "新平台", "待输入：速率语义和端点未提供。待实机验证。不填实测速率。"),
-        Item("F07", "受限配方", "P0（封装配方）", "新平台", "部分：同一页面的简单操作和受限 JSON 校验。不是完整专业脚本，也不是 SSL 兼容层。"),
-        Item("F07", "专业脚本与兼容", "P0（新脚本，非旧语法）", "新平台", "待输入：完整专业脚本的合法行为说明不足。不建旧 SSL 层，也不因此阻塞现有配方。"),
+        Item("F07", "受限配方", "P0（封装配方）", "新平台", "部分：同一页面的简单操作和配方校验。当前校验不是完整专业脚本。"),
+        Item("F07", "专业脚本与兼容", "P0（新脚本）", "新平台", "待输入：完整专业脚本的行为说明不足。现有配方校验不代替完整专业脚本。"),
         Item("F07", "单步调试", "P1（调试单步）", "冲突待Bao取舍", "未纳入本轮。原 P1。若全旧能力要求调试器，请 Bao 取舍，本轮不升、不删。"),
         Item("F08", "P/E长测恢复", "P0", "新平台", "部分：重启把未完成会话标为已中断且不续跑。待输入：部分恢复语义。待实机验证。"),
         Item("F09", "写干扰", "P0", "新平台", "待输入：合法流程说明不足。待实机验证。"),

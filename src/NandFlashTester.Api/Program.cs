@@ -82,6 +82,15 @@ app.MapGet("/api/health", () => Results.Json(new
     schema = RecipeContract.SchemaId
 }));
 
+app.MapGet("/api/discovery", () => Results.Json(new
+{
+    connected = false,
+    probed = false,
+    devices = Array.Empty<object>(),
+    reason = "发现与连接不可用：平台通信端点尚未提供。软件不会猜测地址，也不会发送探测命令。",
+    next = "等待获准的通信说明给出端点后再连接。在此之前，依赖实机的执行保持禁用。"
+}));
+
 app.MapGet("/api/platform", () => Results.Json(SessionEndpoints.PlatformBody(fixtureEnabled)));
 app.MapGet("/api/management/draft", () => Results.Json(new
 {

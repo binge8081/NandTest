@@ -342,7 +342,7 @@ public class ApiClosedLoopTests
         Assert.False(meta.RootElement.GetProperty("jsonEntryIsSslCompatible").GetBoolean());
         Assert.Contains("独立重写", meta.RootElement.GetProperty("reimplementationPolicy").GetString(), StringComparison.Ordinal);
         Assert.Contains("同一测试页", meta.RootElement.GetProperty("expertEntryLocation").GetString(), StringComparison.Ordinal);
-        Assert.Contains("不是 SSL", meta.RootElement.GetProperty("expertEntryLocation").GetString(), StringComparison.Ordinal);
+        Assert.Contains("不是完整专业脚本", meta.RootElement.GetProperty("expertEntryLocation").GetString(), StringComparison.Ordinal);
         Assert.Equal(PhaseScope.Items.Count, meta.RootElement.GetProperty("items").GetArrayLength());
         var items = meta.RootElement.GetProperty("items").EnumerateArray().ToList();
         Assert.Contains(items, item => item.GetProperty("id").GetString() == "F14" && item.GetProperty("status").GetString()!.Contains("待输入", StringComparison.Ordinal));

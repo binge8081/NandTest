@@ -77,11 +77,25 @@ public static class SessionEndpoints
                 message = "配方未通过校验，未发送。",
                 executed = false,
                 hardwareAccepted = false,
+                fallbackToFixture = false,
                 details = validation.Errors
             });
         }
 
         var transport = new BlockedHardwareTransport();
+        if (!transport.MayEmitBytes)
+        {
+            return (StatusCodes.Status409Conflict, new
+            {
+                error = "device_not_connected",
+                message = "未连接设备，依赖实机的执行已禁用。没有改用测试夹具。",
+                executed = false,
+                hardwareAccepted = false,
+                fallbackToFixture = false,
+                bytesEmitted = 0
+            });
+        }
+
         var outcomes = await SessionEngine.RunRecipeAsync(transport, TimeSpan.FromSeconds(1), CancellationToken.None);
         if (transport.EmitCount != 0)
         {

@@ -37,6 +37,7 @@ export function jobCsvUrl(jobId: string): string {
 export const api = {
   health: () => fetch("/api/health").then((response) => read<{ framework: string }>(response)),
   device: () => fetch("/api/devices/sim-dut-1").then((response) => read<DeviceInfo>(response)),
+  discovery: () => fetch("/api/discovery").then((response) => read<{ connected: boolean; probed: boolean; reason: string; next: string }>(response)),
   meta: () =>
     fetch("/api/meta").then((response) =>
       read<{

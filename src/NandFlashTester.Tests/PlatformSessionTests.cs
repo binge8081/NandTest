@@ -68,19 +68,23 @@ public class PlatformSessionTests
         Assert.Equal(0, session.RootElement.GetProperty("bytesEmitted").GetInt32());
 
         var executed = await client.PostAsync($"/api/sessions/{sessionId}/execute", new StringContent(RecipePresets.SuccessJson, Encoding.UTF8, "application/json"));
-        Assert.Equal(200, (int)executed.StatusCode);
+        Assert.Equal(409, (int)executed.StatusCode);
         using var body = JsonDocument.Parse(await executed.Content.ReadAsStringAsync());
+        Assert.False(body.RootElement.GetProperty("executed").GetBoolean());
+        Assert.False(body.RootElement.GetProperty("fallbackToFixture").GetBoolean());
         Assert.Equal(0, body.RootElement.GetProperty("bytesEmitted").GetInt32());
-        Assert.False(body.RootElement.GetProperty("hardwareAccepted").GetBoolean());
-        Assert.Equal(5, body.RootElement.GetProperty("commands").GetArrayLength());
-        Assert.All(body.RootElement.GetProperty("commands").EnumerateArray(), command =>
-        {
-            Assert.False(command.GetProperty("sent").GetBoolean());
-            Assert.False(command.GetProperty("hardwareAccepted").GetBoolean());
-        });
+        using var after = JsonDocument.Parse(await (await client.GetAsync($"/api/sessions/{sessionId}")).Content.ReadAsStringAsync());
+        Assert.Equal(0, after.RootElement.GetProperty("commands").GetArrayLength());
 
         var fixture = await client.PostAsync("/api/jobs", new StringContent(RecipePresets.SuccessJson, Encoding.UTF8, "application/json"));
         Assert.Equal(403, (int)fixture.StatusCode);
+
+        using var discovery = JsonDocument.Parse(await (await client.GetAsync("/api/discovery")).Content.ReadAsStringAsync());
+        Assert.False(discovery.RootElement.GetProperty("connected").GetBoolean());
+        Assert.False(discovery.RootElement.GetProperty("probed").GetBoolean());
+        Assert.Empty(discovery.RootElement.GetProperty("devices").EnumerateArray());
+        Assert.Contains("不会猜测地址", discovery.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("sim-dut", discovery.RootElement.ToString(), StringComparison.Ordinal);
 
         using var materials = JsonDocument.Parse(await (await client.GetAsync("/api/materials")).Content.ReadAsStringAsync());
         Assert.False(materials.RootElement.GetProperty("realConfigEnabled").GetBoolean());
