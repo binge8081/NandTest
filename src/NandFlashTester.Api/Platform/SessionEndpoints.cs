@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using NandFlashTester.Api.Data;
+using NandFlashTester.Core;
 using NandFlashTester.Core.Platform;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Core.Scope;
@@ -13,7 +14,7 @@ public static class SessionEndpoints
 
     public static object PlatformBody(bool automatedTestFixture) => new
     {
-        product = "新平台 NAND 测试上位机",
+        product = ProductIdentity.Name,
         hostOs = "Windows 11 x64",
         runtimeIdentifier = "win-x64",
         mode = automatedTestFixture ? PlatformModes.AutomatedTest : PlatformModes.Production,
@@ -172,11 +173,12 @@ public static class SessionEndpoints
     {
         var builder = new StringBuilder();
         builder.Append('\uFEFF');
-        builder.AppendLine("会话编号,步骤序号,意图,命令状态,已发到线路,实机通过,证据级别,原因,下一步");
+        builder.AppendLine("产品,会话编号,步骤序号,意图,命令状态,已发到线路,实机通过,证据级别,原因,下一步");
         foreach (var command in session.Commands)
         {
             var cells = new[]
             {
+                ProductIdentity.Name,
                 session.SessionId,
                 command.StepIndex.ToString(CultureInfo.InvariantCulture),
                 LogicalIntents.Text(command.Intent),

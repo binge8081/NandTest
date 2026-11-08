@@ -5,6 +5,7 @@ using NandFlashTester.Api.Data;
 using NandFlashTester.Api.Materials;
 using NandFlashTester.Api.Jobs;
 using NandFlashTester.Api.Platform;
+using NandFlashTester.Core;
 using NandFlashTester.Core.Devices;
 using NandFlashTester.Core.Execution;
 using NandFlashTester.Core.Management;
@@ -75,6 +76,7 @@ app.MapGet("/api/health", () => Results.Json(new
 {
     status = "ok",
     service = "nand-platform",
+    product = ProductIdentity.Name,
     framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
     hardwareAccepted = false,
     icdProvided = false,
@@ -318,6 +320,7 @@ if (!uiReady)
     app.MapGet("/", () => Results.Json(new
     {
         service = "nand-platform",
+        product = ProductIdentity.Name,
         health = "/api/health",
         ui = "在 web 目录执行 npm run dev，或先 npm run build 再由本服务托管 web/dist"
     }));

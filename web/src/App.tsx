@@ -100,8 +100,8 @@ function ProductEntry() {
     <div className="page">
       <header className="top">
         <div>
-          <p className="eyebrow">新平台 NAND 测试</p>
-          <h1>设备测试</h1>
+          <img className="brand-logo" src="/lingcun-logo.png" width={170} height={30} alt="STORLEAD" />
+          <h1>领存NFA1000闪存测试仪</h1>
         </div>
         <p className="runtime">{framework || ".NET"} · 本机上位机</p>
       </header>
@@ -243,7 +243,7 @@ function FixtureEntry() {
             </tbody>
           </table>
         )}
-        <p><a href="#/">返回设备测试</a></p>
+        <p><a href="#/">返回领存NFA1000闪存测试仪</a></p>
       </section>
     </div>
   );

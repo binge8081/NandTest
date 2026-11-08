@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using NandFlashTester.Core;
 using NandFlashTester.Core.Platform;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Tests.Support;
@@ -85,6 +86,8 @@ public class PlatformSessionTests
         Assert.Empty(discovery.RootElement.GetProperty("devices").EnumerateArray());
         Assert.Contains("不会猜测地址", discovery.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
         Assert.DoesNotContain("sim-dut", discovery.RootElement.ToString(), StringComparison.Ordinal);
+        using var platform = JsonDocument.Parse(await (await client.GetAsync("/api/platform")).Content.ReadAsStringAsync());
+        Assert.Equal(ProductIdentity.Name, platform.RootElement.GetProperty("product").GetString());
 
         using var materials = JsonDocument.Parse(await (await client.GetAsync("/api/materials")).Content.ReadAsStringAsync());
         Assert.False(materials.RootElement.GetProperty("realConfigEnabled").GetBoolean());

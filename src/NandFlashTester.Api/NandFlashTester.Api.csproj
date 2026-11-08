@@ -12,6 +12,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyTitle>领存NFA1000闪存测试仪</AssemblyTitle>
+    <Product>领存NFA1000闪存测试仪</Product>
+    <Description>领存NFA1000闪存测试仪</Description>
   </PropertyGroup>
 
   <ItemGroup>

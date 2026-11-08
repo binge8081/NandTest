@@ -54,6 +54,8 @@ public class ApiClosedLoopTests
             Assert.Equal("模拟", row["设备类型"]);
             Assert.Equal("否", row["未知硬件已替换"]);
             Assert.Equal("通过", row["结论"]);
+            Assert.Equal("领存NFA1000闪存测试仪", row["产品"]);
+            Assert.Contains("模拟", row["结果性质"], StringComparison.Ordinal);
         });
         Assert.Contains(rows, row => row["步骤名称"] == "比较" && row["步骤状态"] == "成功" && row["步骤覆盖"] == "已测" && row["页"] == "");
         var overview = job.RootElement.GetProperty("overview");

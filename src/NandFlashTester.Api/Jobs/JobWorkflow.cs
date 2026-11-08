@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using NandFlashTester.Api.Data;
+using NandFlashTester.Core;
 using NandFlashTester.Core.Devices;
 using NandFlashTester.Core.Execution;
 using NandFlashTester.Core.Recipes;
@@ -507,7 +508,7 @@ public static class CsvExport
 {
     public static readonly string[] Headers =
     [
-        "任务编号", "配方名称", "配方版本", "配方哈希", "种子",
+        "产品", "任务编号", "配方名称", "配方版本", "配方哈希", "种子",
         "请求设备", "实际设备", "设备类型", "未知硬件已替换", "替换说明",
         "任务状态", "结论", "错误位数", "错误字节数", "结果性质",
         "步骤序号", "步骤名称", "步骤状态", "步骤覆盖", "步骤说明",
@@ -541,6 +542,7 @@ public static class CsvExport
     {
         var cells = new[]
         {
+            ProductIdentity.Name,
             job.JobId,
             job.RecipeName,
             job.RecipeVersion,

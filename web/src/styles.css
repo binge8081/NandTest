@@ -36,6 +36,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin-bottom: 14px;
 }
 
+.brand-logo {
+  display: block;
+  width: 170px;
+  height: 30px;
+  margin-bottom: 8px;
+}
+
 .eyebrow { margin: 0 0 4px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pine); font-size: 12px; }
 h1 { margin: 0; font-size: 34px; font-weight: 680; letter-spacing: -0.03em; }
 h2 { margin: 0; font-size: 18px; }
