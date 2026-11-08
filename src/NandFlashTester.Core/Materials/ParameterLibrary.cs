@@ -25,10 +25,10 @@ public static class ParameterLibrary
 
     public static IReadOnlyList<ParameterEntry> Active { get; } =
     [
-        Policy("wd-mass-production-cap-mt-s", "2400", "平台量产验收上限。不是器件额定速率，也不是实际覆盖。"),
-        Policy("sku-temperature-commercial-0-70", "0,25,70", "平台温度档。不是某一料号 datasheet 原表。"),
-        Policy("sku-temperature-commercial-0-85", "0,25,85", "平台温度档。不是某一料号 datasheet 原表。"),
-        Policy("sku-temperature-industrial", "-40,25,85", "平台温度档。不是某一料号 datasheet 原表。"),
+        Candidate("wd-mass-production-cap-mt-s", "2400", "仅在料号被核实为 WD 并选用该约束时适用。未核实时不是所有厂商的全局上限，也不是器件许可。"),
+        Candidate("sku-temperature-commercial-0-70", "0,25,70", "候选温度档。须在 SKU 规格核实后选择，不自动成为当前器件许可。"),
+        Candidate("sku-temperature-commercial-0-85", "0,25,85", "候选温度档。须在 SKU 规格核实后选择，不自动成为当前器件许可。"),
+        Candidate("sku-temperature-industrial", "-40,25,85", "候选温度档。须在 SKU 规格核实后选择，不自动成为当前器件许可。"),
         Device("command-set"),
         Device("address-organization"),
         Device("timing"),
@@ -53,8 +53,8 @@ public static class ParameterLibrary
         return new ParameterImport(name, string.IsNullOrWhiteSpace(version) ? null : version.Trim(), documentId, chapter, null, status.ToString(), false, reason);
     }
 
-    private static ParameterEntry Policy(string key, string value, string reason) =>
-        new(key, SourceRules.PlatformPolicyLayer, PolicyVersion, "PlatformPolicy", true, value, reason);
+    private static ParameterEntry Candidate(string key, string value, string reason) =>
+        new(key, SourceRules.PlatformPolicyLayer, PolicyVersion, "Candidate", false, value, reason);
 
     private static ParameterEntry Device(string key) =>
         new(key, SourceRules.DeviceLayer, null, SourceStatus.NotProvided.ToString(), false, null, "器件 datasheet 未提供，该项禁用。");

@@ -117,7 +117,7 @@ public static class SessionEndpoints
 
         var name = string.IsNullOrWhiteSpace(intent) ? "set-voltage" : intent.Trim();
         var outcome = SessionEngine.BlockBeforeSend(name, new BlockedHardwareTransport())
-            ?? new CommandOutcome(name, "Rejected", false, false, EvidenceClasses.SoftwareContract, "未知意图，未发送。", "只使用页面上的配方或已列出的禁用操作。");
+            ?? new CommandOutcome(name, "Rejected", false, false, EvidenceClasses.SoftwareContract, "未知意图，未发送。", "只使用页面上的配置或已列出的禁用操作。");
         store.AddCommands(sessionId, [outcome]);
         return (StatusCodes.Status200OK, ToDetail(store.Get(sessionId)!));
     }

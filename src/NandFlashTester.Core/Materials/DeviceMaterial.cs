@@ -45,10 +45,12 @@ public sealed record MaterialClaim(
     int? PageSizeBytes);
 
 public sealed record RateReport(
+    string? Vendor,
     int? RatedMtPerS,
     int? CharacterizationMtPerS,
     int? RequestedMtPerS,
-    int MassProductionCapMtPerS,
+    int? MassProductionCapMtPerS,
+    bool CapApplies,
     int? ActualCoveredMtPerS,
     IReadOnlyList<string> Uncovered);
 
@@ -59,8 +61,11 @@ public sealed record TemperatureReport(
     IReadOnlyList<int> RequestedPoints,
     IReadOnlyList<int> ActualCoveredPoints,
     IReadOnlyList<string> Uncovered,
-    bool Accepted,
+    bool WithinCandidate,
+    bool DevicePermissionGranted,
     string Reason);
+
+public sealed record RealDeviceDecision(bool Allowed, bool SkuSpecVerified, string Reason);
 
 public sealed record DeviceProfile(
     bool RealConfigEnabled,
@@ -101,27 +106,42 @@ public static class DeviceMaterialModel
         return Build(null, null, null, claim.DocumentId, claim.Chapter, status, reason);
     }
 
-    public static RateReport Rate(int? requestedMtPerS)
+    public static RateReport Rate(string? vendor, int? requestedMtPerS, bool partVerifiedAsWd)
     {
         var uncovered = new List<string>
         {
-            "器件额定速率没有已核实 datasheet，不能用平台上限或请求值代替。",
+            "器件额定速率没有已核实 datasheet，不能用上限或请求值代替。",
             "表征速率未提供，不填写。",
             "实际覆盖尚未在新硬件上测量。"
         };
-        if (requestedMtPerS is > WdMassProductionCapMtPerS)
+        var wd = partVerifiedAsWd && string.Equals(vendor?.Trim(), "WD", StringComparison.OrdinalIgnoreCase);
+        if (!partVerifiedAsWd)
         {
-            uncovered.Insert(0, $"请求 {requestedMtPerS} MT/s 高于 WD 量产验收上限 {WdMassProductionCapMtPerS} MT/s，不计入量产覆盖。");
+            uncovered.Add("料号未经核实。2400 MT/s 只属于已核实的 WD 量产约束，不作为所有厂商的全局上限，请求中的厂商文字也不启用它。");
+            return new RateReport(vendor, null, null, requestedMtPerS, null, false, null, uncovered);
         }
 
-        return new RateReport(
-            null,
-            null,
-            requestedMtPerS,
-            WdMassProductionCapMtPerS,
-            null,
-            uncovered);
+        if (!wd)
+        {
+            uncovered.Add("已核实料号不是 WD，不套用 2400 MT/s 量产约束。");
+            return new RateReport(vendor, null, null, requestedMtPerS, null, false, null, uncovered);
+        }
+
+        if (requestedMtPerS is > WdMassProductionCapMtPerS)
+        {
+            uncovered.Insert(0, $"请求 {requestedMtPerS} MT/s 高于该 WD 料号的量产验收上限 {WdMassProductionCapMtPerS} MT/s，不计入该料号的量产覆盖。");
+        }
+
+        return new RateReport(vendor, null, null, requestedMtPerS, WdMassProductionCapMtPerS, true, null, uncovered);
     }
+
+    public static RealDeviceDecision DecideRealDevice(bool clientClaimsSkuVerified) =>
+        new(
+            false,
+            false,
+            clientClaimsSkuVerified
+                ? "请求声称 SKU 规格已核实，但本机没有已批准的 SKU 规格，不允许实机。"
+                : "SKU 规格未核实，不允许实机。");
 
     public static TemperatureReport Temperature(string? skuClass, IReadOnlyList<int>? requested)
     {
@@ -134,9 +154,10 @@ public static class DeviceMaterialModel
                 [],
                 points,
                 [],
-                ["SKU 温度档未选择，或不是平台已定的 0–70、0–85、工业三档。器件 datasheet 温度原表未提供。"],
+                ["温度档只是候选。未选择候选档，或器件 SKU 规格尚未核实。"],
                 false,
-                "温度请求未接受。");
+                false,
+                "未授予器件温度许可。");
         }
 
         var outside = points.Where(point => !rated.Contains(point)).Distinct().ToArray();
@@ -148,9 +169,10 @@ public static class DeviceMaterialModel
                 rated,
                 points,
                 [],
-                outside.Select(point => $"{point} ℃ 超出该 SKU 平台温度档。").ToArray(),
+                outside.Select(point => $"{point} ℃ 不在该候选温度档内。").ToArray(),
                 false,
-                "超界温度已拒绝，没有启动测试。");
+                false,
+                "超出候选档，已拒绝。这不表示该候选档已获器件许可。");
         }
 
         return new TemperatureReport(
@@ -161,7 +183,8 @@ public static class DeviceMaterialModel
             [],
             rated.Select(point => $"{point} ℃ 尚无实际覆盖。").ToArray(),
             true,
-            "请求落在平台温度档内。额定档是平台规则，不是某一料号的 datasheet 原表；实际覆盖仍为空。");
+            false,
+            "请求落在候选档内。SKU 规格未核实，不授予真实器件温度许可。");
     }
 
     private static DeviceProfile Build(
@@ -182,7 +205,7 @@ public static class DeviceMaterialModel
             status,
             false,
             reason)).ToArray();
-        return new DeviceProfile(false, partNumber, sku, revision, reason, fields, Rate(null));
+        return new DeviceProfile(false, partNumber, sku, revision, reason, fields, Rate(null, null, false));
     }
 
     private static readonly Dictionary<string, int[]> Templates = new(StringComparer.Ordinal)

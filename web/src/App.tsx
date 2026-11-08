@@ -1,22 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import type { JobSummary, RecipeShape, ScopeItem } from "./types";
-import type { MaterialView } from "./api";
+import type { JobSummary, ScopeItem } from "./types";
+import type { MaterialView, ScriptDiagnostic, ScriptDocument, ScriptLog, ScriptPlanView } from "./api";
 
-const emptyRecipe = (): RecipeShape => ({
-  schema: "nand.sim.recipe/1",
-  name: "页编程比较",
-  version: "1.0.0",
-  seed: 1,
-  paceMs: 0,
-  topology: { channels: 1, ces: 1, luns: 1, planes: 1, blocks: 1, pagesPerBlock: 1, pageSizeBytes: 16 },
-  pattern: { kind: "increment" },
-  target: { channel: 0, ce: 0, lun: 0, plane: 0, block: 0, pageStart: 0, pageCount: 1 },
-  inject: { mode: "none" }
-});
-
-function pretty(recipe: RecipeShape): string {
-  return JSON.stringify(recipe, null, 2);
+function configurationScript(name: string, seed: number, block: number, pages: number): string {
+  return `name ${name}\nseed ${seed}\nvar block = ${block}\nvar pages = ${pages}\nerase block\nloop pages\n  program block i\n  read block i\n  compare block i\nend\n`;
 }
 
 export function App() {
@@ -32,13 +20,18 @@ export function App() {
 function ProductEntry() {
   const [framework, setFramework] = useState("");
   const [scope, setScope] = useState<ScopeItem[]>([]);
-  const [recipeText, setRecipeText] = useState(() => pretty(emptyRecipe()));
-  const [draft, setDraft] = useState<RecipeShape>(() => emptyRecipe());
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [serverErrors, setServerErrors] = useState<string[]>([]);
+  const [configName, setConfigName] = useState("页编程比较");
+  const [seed, setSeed] = useState(1);
+  const [block, setBlock] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [scriptText, setScriptText] = useState(() => configurationScript("页编程比较", 1, 0, 1));
+  const [diagnostics, setDiagnostics] = useState<ScriptDiagnostic[]>([]);
+  const [plan, setPlan] = useState<ScriptPlanView | null>(null);
+  const [logs, setLogs] = useState<ScriptLog[]>([]);
+  const [scriptId, setScriptId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<ScriptDocument[]>([]);
   const [sha, setSha] = useState("");
-  const [expertNote, setExpertNote] = useState<string | null>(null);
-  const [capabilities, setCapabilities] = useState<{ name: string; state: string; detail: string }[]>([]);
+  const [note, setNote] = useState<string | null>(null);
   const [discoveryReason, setDiscoveryReason] = useState("正在读取发现状态。");
   const [materials, setMaterials] = useState<MaterialView | null>(null);
 
@@ -47,56 +40,103 @@ function ProductEntry() {
     api.meta().then((meta) => setScope(meta.items)).catch(() => setScope([]));
     api.discovery().then((body) => setDiscoveryReason(body.reason)).catch(() => setDiscoveryReason("无法读取发现状态。没有发送探测。"));
     api.materials().then(setMaterials).catch(() => setMaterials(null));
+    api.scriptList().then((body) => setSaved(body.scripts)).catch(() => setSaved([]));
   }, []);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      if (parseError) {
-        setServerErrors([]);
-        setSha("");
-        return;
-      }
-      api.validate(recipeText).then((result) => {
-        setServerErrors(result.errors ?? []);
-        setSha(result.sha256 ?? "");
-        setCapabilities(result.capabilities ?? []);
-      }).catch(() => setServerErrors(["校验请求失败"]));
+      api.scriptCheck(scriptText).then((result) => {
+        setDiagnostics(result.diagnostics);
+        setPlan(result.plan);
+      }).catch(() => setDiagnostics([{ line: 1, column: 1, message: "校验请求失败" }]));
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [recipeText, parseError]);
+  }, [scriptText]);
 
   const remaining = useMemo(() => scope.filter((item) => !item.status.startsWith("部分")), [scope]);
 
-  function applyText(next: string) {
-    setRecipeText(next);
-    try {
-      const parsed = JSON.parse(next) as RecipeShape;
-      setDraft(parsed);
-      setParseError(null);
-    } catch {
-      setParseError("配方不是合法 JSON，不会执行。");
-    }
+  function writeConfiguration() {
+    setScriptText(configurationScript(configName.trim() || "页编程比较", seed, block, pages));
+    setNote("配置已写入自定义脚本。这只是文本，硬件未执行。");
+    setLogs([]);
   }
 
-  function updateDraft(mutator: (recipe: RecipeShape) => void) {
-    const next = structuredClone(draft);
-    mutator(next);
-    setDraft(next);
-    setRecipeText(pretty(next));
-    setParseError(null);
+  async function refreshList() {
+    const body = await api.scriptList();
+    setSaved(body.scripts);
   }
 
-  async function validateOnly() {
-    setExpertNote(null);
-    if (parseError) {
-      setExpertNote("配方不是合法 JSON，未执行。");
+  async function createScript() {
+    setNote(null);
+    const created = await api.scriptCreate(scriptText);
+    setScriptId(created.script.scriptId);
+    setSha(created.script.sha256);
+    setDiagnostics(created.diagnostics);
+    setNote(created.ok ? "已新建。硬件未执行。" : "已保存文本，但校验未通过，不会执行。");
+    await refreshList();
+  }
+
+  async function saveScript() {
+    setNote(null);
+    if (!scriptId) {
+      await createScript();
       return;
     }
-    const result = await api.validate(recipeText);
-    setServerErrors(result.errors ?? []);
-    setSha(result.sha256 ?? "");
-    setCapabilities(result.capabilities ?? []);
-    setExpertNote(result.ok ? "配方校验通过。设备未连接，执行仍保持禁用。" : "配方未通过校验，未执行。");
+    const savedScript = await api.scriptSave(scriptId, scriptText);
+    setSha(savedScript.script.sha256);
+    setDiagnostics(savedScript.diagnostics);
+    setPlan(null);
+    setNote(savedScript.ok ? "已保存。硬件未执行。" : "已保存文本，但校验未通过，不会执行。");
+    await refreshList();
+  }
+
+  async function openScript(id: string) {
+    if (!id) {
+      return;
+    }
+    const opened = await api.scriptOpen(id);
+    setScriptId(opened.script.scriptId);
+    setScriptText(opened.script.body);
+    setSha(opened.script.sha256);
+    setLogs(opened.logs);
+    setConfigName(opened.script.name);
+    setNote("已打开。打开不会执行硬件。");
+  }
+
+  async function planScript() {
+    setNote(null);
+    let id = scriptId;
+    if (!id) {
+      const created = await api.scriptCreate(scriptText);
+      id = created.script.scriptId;
+    } else {
+      await api.scriptSave(id, scriptText);
+    }
+    setScriptId(id);
+    try {
+      const planned = await api.scriptPlan(id);
+      setPlan(planned.plan);
+      setLogs(planned.logs);
+      setSha(planned.script.sha256);
+      setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。硬件未执行。`);
+      await refreshList();
+    } catch (error) {
+      const body = (error as { body?: { diagnostics?: ScriptDiagnostic[] } }).body;
+      setDiagnostics(body?.diagnostics ?? [{ line: 1, column: 1, message: "计划没有展开，硬件未执行。" }]);
+      setPlan(null);
+      setNote("校验未通过，没有展开计划，也没有执行。");
+    }
+  }
+
+  async function stopScript() {
+    if (!scriptId) {
+      setNote("还没有保存的脚本。没有需要停止的发送。");
+      return;
+    }
+    const stopped = await api.scriptStop(scriptId);
+    setLogs(stopped.logs);
+    setNote("已停止。停止发生在发送之前，硬件未执行。");
+    await refreshList();
   }
 
   return (
@@ -127,65 +167,82 @@ function ProductEntry() {
           <section className="panel" id="device-params">
             <h2>器件参数</h2>
             <p className="fine">{materials?.reason ?? "正在读取参数状态。"}</p>
+            <p className="fine">{materials?.temperatureTemplates?.reason ?? "三温只是未核实候选。未经 SKU 规格核实，不允许实机。"}</p>
+            <p className="fine">{materials?.rate?.policySource}</p>
             <dl>
               <dt>料号</dt><dd>{materials?.partNumber ?? "未提供"}</dd>
               <dt>真实规格</dt><dd>{materials?.realConfigEnabled ? "已启用" : "未启用"}</dd>
-              <dt>额定速率</dt><dd>{materials?.rate.ratedMtPerS ?? "未提供"}</dd>
-              <dt>量产验收上限</dt><dd>{materials ? `${materials.rate.massProductionCapMtPerS} MT/s` : "未提供"}</dd>
-              <dt>实际覆盖</dt><dd>{materials?.rate.actualCoveredMtPerS ?? "未测"}</dd>
+              <dt>额定速率</dt><dd>{materials?.rate?.ratedMtPerS ?? "未提供"}</dd>
+              <dt>量产验收上限</dt><dd>{materials?.rate?.capApplies && materials.rate.massProductionCapMtPerS != null ? `${materials.rate.massProductionCapMtPerS} MT/s` : "未适用"}</dd>
+              <dt>实际覆盖</dt><dd>{materials?.rate?.actualCoveredMtPerS ?? "未测"}</dd>
             </dl>
           </section>
 
           <section className="panel" id="simple-run">
-            <h2>配方</h2>
-            <p className="fine">在这里编写要下发的配方。没有连接的设备时不能执行。</p>
+            <h2>配置</h2>
+            <p className="fine">这里填写名称、种子、块和循环页数。写入后生成有界的擦写读比较脚本。没有连接的设备时不能执行。</p>
             <div className="form-grid">
-              <label className="wide">配方名称
-                <input value={draft.name ?? ""} maxLength={64} onChange={(event) => updateDraft((recipe) => { recipe.name = event.target.value; })} />
+              <label className="wide">配置名称
+                <input value={configName} maxLength={64} onChange={(event) => setConfigName(event.target.value)} />
               </label>
-              <NumberField label="通道" value={draft.topology?.channels ?? 1} min={1} max={4} onChange={(value) => updateDraft((recipe) => { recipe.topology.channels = value; })} />
-              <NumberField label="CE" value={draft.topology?.ces ?? 1} min={1} max={4} onChange={(value) => updateDraft((recipe) => { recipe.topology.ces = value; })} />
-              <NumberField label="LUN" value={draft.topology?.luns ?? 1} min={1} max={2} onChange={(value) => updateDraft((recipe) => { recipe.topology.luns = value; })} />
-              <NumberField label="Plane" value={draft.topology?.planes ?? 1} min={1} max={2} onChange={(value) => updateDraft((recipe) => { recipe.topology.planes = value; })} />
-              <NumberField label="块数" value={draft.topology?.blocks ?? 1} min={1} max={32} onChange={(value) => updateDraft((recipe) => { recipe.topology.blocks = value; })} />
-              <NumberField label="每块页数" value={draft.topology?.pagesPerBlock ?? 1} min={1} max={64} onChange={(value) => updateDraft((recipe) => { recipe.topology.pagesPerBlock = value; })} />
-              <NumberField label="页字节" value={draft.topology?.pageSizeBytes ?? 16} min={16} max={4096} step={16} onChange={(value) => updateDraft((recipe) => { recipe.topology.pageSizeBytes = value; })} />
-              <NumberField label="目标块" value={draft.target?.block ?? 0} min={0} max={31} onChange={(value) => updateDraft((recipe) => { recipe.target.block = value; })} />
-              <NumberField label="起始页" value={draft.target?.pageStart ?? 0} min={0} max={63} onChange={(value) => updateDraft((recipe) => { recipe.target.pageStart = value; })} />
-              <NumberField label="页数" value={draft.target?.pageCount ?? 1} min={1} max={64} onChange={(value) => updateDraft((recipe) => { recipe.target.pageCount = value; })} />
-              <label>图案
-                <select value={draft.pattern?.kind ?? "increment"} onChange={(event) => updateDraft((recipe) => { recipe.pattern.kind = event.target.value; })}>
-                  <option value="increment">increment</option>
-                  <option value="constant">constant</option>
-                  <option value="prng">prng</option>
-                </select>
-              </label>
-              <NumberField label="种子" value={draft.seed ?? 0} min={0} max={4294967295} onChange={(value) => updateDraft((recipe) => { recipe.seed = value; })} />
+              <NumberField label="种子" value={seed} min={0} max={4294967295} onChange={setSeed} />
+              <NumberField label="块" value={block} min={0} max={65535} onChange={setBlock} />
+              <NumberField label="循环次数" value={pages} min={1} max={32} onChange={setPages} />
             </div>
             <div className="row">
+              <button type="button" onClick={writeConfiguration}>写入自定义脚本</button>
               <button type="button" className="primary" disabled>执行</button>
             </div>
-            <p className="fine">执行已禁用：{discoveryReason}</p>
+            <p className="fine">执行已禁用：{discoveryReason} 未经 SKU 规格核实，不允许实机。</p>
           </section>
 
           <section className="panel" id="expert-recipe">
             <div className="section-head">
-              <h2>专家配方</h2>
-              <span className="pill">新配方</span>
+              <h2>自定义脚本</h2>
+              <span className="pill">主机计划</span>
             </div>
-            <p className="fine">在这里编辑和校验配方文本。未知字段、越界和未批准版本会被拒绝，并且不会执行。当前校验还不是完整专业脚本。</p>
-            <textarea aria-label="配方文本" spellCheck={false} value={recipeText} onChange={(event) => { applyText(event.target.value); setExpertNote(null); }} />
-            {parseError && <p className="error">{parseError}</p>}
-            {serverErrors.length > 0 && <ul className="errors">{serverErrors.map((error) => <li key={error}>{error}</li>)}</ul>}
-            {expertNote && <p className="fine">{expertNote}</p>}
-            {sha && <p className="fine">配方哈希 <span className="mono">{sha}</span></p>}
-            {capabilities.length > 0 && (
+            <p className="fine">可声明变量、有界循环和 if 分支。校验会标出行列。展开的是主机计划，硬件未执行。当前脚本不是完整专业脚本。</p>
+            <textarea aria-label="自定义脚本" spellCheck={false} value={scriptText} onChange={(event) => { setScriptText(event.target.value); setNote(null); setLogs([]); }} />
+            {diagnostics.length > 0 && <ul className="errors">{diagnostics.map((item) => <li key={`${item.line}-${item.column}-${item.message}`}>{item.message}</li>)}</ul>}
+            {note && <p className="fine">{note}</p>}
+            {sha && <p className="fine">脚本哈希 <span className="mono">{sha}</span></p>}
+            {plan && (
+              <div>
+                <p className="fine">主机计划 · {plan.executionState} · 擦除 {plan.eraseCount} · 写入 {plan.programCount} · 读回 {plan.readCount} · 比较 {plan.compareCount} · 硬件未执行</p>
+                <table>
+                  <thead><tr><th>序号</th><th>行</th><th>步骤</th><th>块</th><th>页</th><th>状态</th></tr></thead>
+                  <tbody>
+                    {plan.actions.map((action) => (
+                      <tr key={action.index}>
+                        <td>{action.index}</td>
+                        <td>{action.line}</td>
+                        <td>{action.op}</td>
+                        <td>{action.block}</td>
+                        <td>{action.page ?? "—"}</td>
+                        <td>{action.hardwareExecuted ? "异常" : "计划"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {logs.length > 0 && (
               <ul>
-                {capabilities.map((item) => <li key={item.name}><strong>{item.name}</strong> · {item.state} · {item.detail}</li>)}
+                {logs.map((item) => <li key={item.logId}>{item.kind} · {item.message}</li>)}
               </ul>
             )}
             <div className="row">
-              <button type="button" onClick={() => void validateOnly()}>校验</button>
+              <button type="button" onClick={() => void createScript()}>新建</button>
+              <button type="button" onClick={() => void saveScript()}>保存</button>
+              <label>打开
+                <select value={scriptId ?? ""} onChange={(event) => void openScript(event.target.value)}>
+                  <option value="">选择已保存脚本</option>
+                  {saved.map((item) => <option key={item.scriptId} value={item.scriptId}>{item.name}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={() => void planScript()}>展开主机计划</button>
+              <button type="button" onClick={() => void stopScript()}>停止</button>
+              {scriptId && <a href={`/api/scripts/${scriptId}/export.csv`}>导出</a>}
             </div>
           </section>
 

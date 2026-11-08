@@ -14,7 +14,46 @@ export interface MaterialView {
   realConfigEnabled: boolean;
   partNumber: string | null;
   reason: string;
-  rate: { massProductionCapMtPerS: number; ratedMtPerS: number | null; actualCoveredMtPerS: number | null };
+  rate: { massProductionCapMtPerS: number | null; capApplies: boolean; ratedMtPerS: number | null; actualCoveredMtPerS: number | null; policySource: string };
+  temperatureTemplates: { devicePermissionGranted: boolean; realDeviceAllowed: boolean; reason: string };
+}
+
+export interface ScriptDiagnostic {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export interface ScriptPlanView {
+  eraseCount: number;
+  programCount: number;
+  readCount: number;
+  compareCount: number;
+  hardwareExecuted: boolean;
+  executionState: string;
+  actions: { index: number; line: number; op: string; block: number; page: number | null; hardwareExecuted: boolean; state: string }[];
+}
+
+export interface ScriptDocument {
+  scriptId: string;
+  name: string;
+  body: string;
+  sha256: string;
+  status: string;
+  eraseCount: number;
+  programCount: number;
+  readCount: number;
+  compareCount: number;
+  hardwareExecuted: boolean;
+}
+
+export interface ScriptLog {
+  logId: number;
+  kind: string;
+  line: number | null;
+  column: number | null;
+  message: string;
+  hardwareExecuted: boolean;
 }
 
 async function read<T>(response: Response): Promise<T> {
@@ -81,6 +120,43 @@ export const api = {
       body: recipeText
     }).then((response) => read<SessionExecution>(response)),
   materials: () => fetch("/api/materials").then((response) => read<MaterialView>(response)),
+  scriptExample: () => fetch("/api/scripts/example").then((response) => read<{ body: string; notes: string }>(response)),
+  scriptList: () => fetch("/api/scripts").then((response) => read<{ scripts: ScriptDocument[] }>(response)),
+  scriptOpen: (scriptId: string) => fetch(`/api/scripts/${scriptId}`).then((response) => read<{ script: ScriptDocument; logs: ScriptLog[] }>(response)),
+  scriptCheck: (body: string) =>
+    fetch("/api/scripts/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body })
+    }).then(async (response) => {
+      const payload = await response.json();
+      return {
+        ok: response.ok && payload.ok === true,
+        diagnostics: (payload.diagnostics ?? []) as ScriptDiagnostic[],
+        plan: (payload.plan ?? null) as ScriptPlanView | null,
+        hardwareExecuted: false as const
+      };
+    }),
+  scriptCreate: (body: string) =>
+    fetch("/api/scripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body })
+    }).then((response) => read<{ ok: boolean; script: ScriptDocument; diagnostics: ScriptDiagnostic[] }>(response)),
+  scriptSave: (scriptId: string, body: string) =>
+    fetch(`/api/scripts/${scriptId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body })
+    }).then((response) => read<{ ok: boolean; script: ScriptDocument; diagnostics: ScriptDiagnostic[] }>(response)),
+  scriptPlan: (scriptId: string) =>
+    fetch(`/api/scripts/${scriptId}/plan`, { method: "POST" }).then((response) =>
+      read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; plan: ScriptPlanView; logs: ScriptLog[]; script: ScriptDocument }>(response)
+    ),
+  scriptStop: (scriptId: string) =>
+    fetch(`/api/scripts/${scriptId}/stop`, { method: "POST" }).then((response) =>
+      read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; script: ScriptDocument; logs: ScriptLog[] }>(response)
+    ),
   draftLoopback: () => fetch("/api/management/draft/loopback", { method: "POST" }).then((response) => read<{ label: string; liveConnectAllowed: boolean }>(response)),
   jobs: () => fetch("/api/jobs").then((response) => read<{ jobs: JobSummary[] }>(response)),
   job: (jobId: string) => fetch(`/api/jobs/${jobId}`).then((response) => read<JobDetail>(response)),

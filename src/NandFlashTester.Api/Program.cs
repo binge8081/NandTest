@@ -5,6 +5,7 @@ using NandFlashTester.Api.Data;
 using NandFlashTester.Api.Materials;
 using NandFlashTester.Api.Jobs;
 using NandFlashTester.Api.Platform;
+using NandFlashTester.Api.Scripts;
 using NandFlashTester.Core;
 using NandFlashTester.Core.Devices;
 using NandFlashTester.Core.Execution;
@@ -42,6 +43,11 @@ builder.Services.AddSingleton(sp =>
     var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
     return new SqliteTraceStore(databasePath);
 });
+builder.Services.AddSingleton(sp =>
+{
+    var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
+    return new SqliteScriptStore(databasePath);
+});
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddSingleton<IJobPacing, NoDelayPacing>();
 builder.Services.AddSingleton<JobService>();
@@ -60,6 +66,7 @@ var app = builder.Build();
 app.Services.GetRequiredService<SqliteJobStore>().Initialize();
 app.Services.GetRequiredService<SqliteSessionStore>().Initialize();
 app.Services.GetRequiredService<SqliteTraceStore>().Initialize();
+app.Services.GetRequiredService<SqliteScriptStore>().Initialize();
 app.UseCors("ui");
 
 var bundledUi = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
@@ -147,7 +154,54 @@ app.MapPost("/api/materials/claim", (MaterialClaim claim) => Results.Json(Materi
 app.MapPost("/api/materials/coverage", (CoverageRequest request) =>
 {
     var temperature = DeviceMaterialModel.Temperature(request.SkuClass, request.Temperatures);
-    return Results.Json(MaterialEndpoints.Coverage(request), statusCode: temperature.Accepted ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
+    return Results.Json(MaterialEndpoints.Coverage(request), statusCode: temperature.WithinCandidate ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
+});
+
+app.MapGet("/api/scripts/example", () => Results.Json(ScriptEndpoints.Example()));
+app.MapPost("/api/scripts/check", (ScriptDocumentRequest request) =>
+{
+    var (status, body) = ScriptEndpoints.Check(request.Body);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/scripts", (ScriptDocumentRequest request, SqliteScriptStore store) =>
+{
+    var (status, body) = ScriptEndpoints.Create(store, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapGet("/api/scripts", (SqliteScriptStore store) => Results.Json(new { scripts = store.List().Select(ScriptEndpoints.Summary) }));
+app.MapGet("/api/scripts/{id}", (string id, SqliteScriptStore store) =>
+{
+    var script = store.Get(id);
+    return script is null
+        ? Results.Json(new { error = "not_found", message = "脚本不存在。" }, statusCode: StatusCodes.Status404NotFound)
+        : Results.Json(new { script = ScriptEndpoints.Summary(script), logs = store.Logs(id).Select(log => new { log.LogId, log.Kind, log.Line, log.Column, log.Message, log.HardwareExecuted }) });
+});
+app.MapPut("/api/scripts/{id}", (string id, ScriptDocumentRequest request, SqliteScriptStore store) =>
+{
+    var (status, body) = ScriptEndpoints.Save(store, id, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/scripts/{id}/plan", (string id, SqliteScriptStore store) =>
+{
+    var (status, body) = ScriptEndpoints.Plan(store, id);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/scripts/{id}/stop", (string id, SqliteScriptStore store) =>
+{
+    var (status, body) = ScriptEndpoints.Stop(store, id);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/scripts/{id}/run", (string id, RealDeviceClaim claim, SqliteScriptStore store) =>
+{
+    var (status, body) = ScriptEndpoints.Run(store, id, claim.SkuSpecVerified);
+    return Results.Json(body, statusCode: status);
+});
+app.MapGet("/api/scripts/{id}/export.csv", (string id, SqliteScriptStore store) =>
+{
+    var script = store.Get(id);
+    return script is null
+        ? Results.Json(new { error = "not_found" }, statusCode: StatusCodes.Status404NotFound)
+        : Results.File(Encoding.UTF8.GetBytes(SqliteScriptStore.Csv(script, store.Logs(id))), "text/csv; charset=utf-8", $"{id}.csv");
 });
 
 app.MapGet("/api/meta", () => Results.Json(new

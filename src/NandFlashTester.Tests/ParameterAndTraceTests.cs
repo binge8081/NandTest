@@ -44,7 +44,9 @@ public class ParameterAndTraceTests
             Assert.Contains(library.RootElement.GetProperty("active").EnumerateArray(), item =>
                 item.GetProperty("key").GetString() == "wd-mass-production-cap-mt-s"
                 && item.GetProperty("valueText").GetString() == "2400"
-                && item.GetProperty("layer").GetString() == "platform-policy");
+                && item.GetProperty("layer").GetString() == "platform-policy"
+                && item.GetProperty("enabled").GetBoolean() == false
+                && item.GetProperty("sourceStatus").GetString() == "Candidate");
 
             var refused = await client.PostAsync("/api/runs", new StringContent(RecipePresets.SuccessJson, Encoding.UTF8, "application/json"));
             Assert.Equal(409, (int)refused.StatusCode);
