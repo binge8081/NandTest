@@ -60,7 +60,12 @@ export const api = {
       body: recipeText
     }).then(async (response) => {
       const body = await response.json();
-      return { ok: response.ok && body.ok === true, errors: (body.errors ?? []) as string[], sha256: body.sha256 as string | undefined };
+      return {
+        ok: response.ok && body.ok === true,
+        errors: (body.errors ?? []) as string[],
+        sha256: body.sha256 as string | undefined,
+        capabilities: (body.capabilities ?? []) as { name: string; state: string; detail: string }[]
+      };
     }),
   createJob: (recipeText: string) =>
     fetch("/api/jobs?deviceId=sim-dut-1", {

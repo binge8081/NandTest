@@ -38,6 +38,7 @@ function ProductEntry() {
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [sha, setSha] = useState("");
   const [expertNote, setExpertNote] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<{ name: string; state: string; detail: string }[]>([]);
   const [discoveryReason, setDiscoveryReason] = useState("正在读取发现状态。");
   const [materials, setMaterials] = useState<MaterialView | null>(null);
 
@@ -58,6 +59,7 @@ function ProductEntry() {
       api.validate(recipeText).then((result) => {
         setServerErrors(result.errors ?? []);
         setSha(result.sha256 ?? "");
+        setCapabilities(result.capabilities ?? []);
       }).catch(() => setServerErrors(["校验请求失败"]));
     }, 250);
     return () => window.clearTimeout(handle);
@@ -93,6 +95,7 @@ function ProductEntry() {
     const result = await api.validate(recipeText);
     setServerErrors(result.errors ?? []);
     setSha(result.sha256 ?? "");
+    setCapabilities(result.capabilities ?? []);
     setExpertNote(result.ok ? "配方校验通过。设备未连接，执行仍保持禁用。" : "配方未通过校验，未执行。");
   }
 
@@ -176,6 +179,11 @@ function ProductEntry() {
             {serverErrors.length > 0 && <ul className="errors">{serverErrors.map((error) => <li key={error}>{error}</li>)}</ul>}
             {expertNote && <p className="fine">{expertNote}</p>}
             {sha && <p className="fine">配方哈希 <span className="mono">{sha}</span></p>}
+            {capabilities.length > 0 && (
+              <ul>
+                {capabilities.map((item) => <li key={item.name}><strong>{item.name}</strong> · {item.state} · {item.detail}</li>)}
+              </ul>
+            )}
             <div className="row">
               <button type="button" onClick={() => void validateOnly()}>校验</button>
             </div>

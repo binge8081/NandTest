@@ -37,6 +37,11 @@ builder.Services.AddSingleton(sp =>
     var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
     return new SqliteSessionStore(databasePath);
 });
+builder.Services.AddSingleton(sp =>
+{
+    var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
+    return new SqliteTraceStore(databasePath);
+});
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddSingleton<IJobPacing, NoDelayPacing>();
 builder.Services.AddSingleton<JobService>();
@@ -54,6 +59,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 app.Services.GetRequiredService<SqliteJobStore>().Initialize();
 app.Services.GetRequiredService<SqliteSessionStore>().Initialize();
+app.Services.GetRequiredService<SqliteTraceStore>().Initialize();
 app.UseCors("ui");
 
 var bundledUi = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
@@ -247,13 +253,75 @@ app.MapPost("/api/recipes/validate", async (HttpRequest request) =>
     {
         ok = result.Ok,
         executed = false,
+        completeProfessionalScript = false,
         errors = result.Errors,
         canonical = result.Recipe?.CanonicalJson,
         sha256 = result.Recipe?.Sha256,
         seed = result.Recipe?.Seed,
-        name = result.Recipe?.Name
+        name = result.Recipe?.Name,
+        capabilities = RecipeCapabilities.ForRecipe(result.Recipe)
     }, statusCode: result.Ok ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
 });
+
+app.MapGet("/api/parameters", (SqliteTraceStore store) => Results.Json(new
+{
+    policyVersion = ParameterLibrary.PolicyVersion,
+    active = ParameterLibrary.Active,
+    imports = store.Imports(),
+    realDeviceParametersEnabled = ParameterLibrary.Active.Where(entry => entry.Layer == SourceRules.DeviceLayer).All(entry => entry.Enabled) && ParameterLibrary.Active.Any(entry => entry.Layer == SourceRules.DeviceLayer && entry.Enabled)
+}));
+
+app.MapPost("/api/parameters/import", (ParameterImportRequest request, SqliteTraceStore store) =>
+{
+    var imported = ParameterLibrary.ImportDevice(request.Key, request.Version, request.DocumentId, request.Chapter, request.ProposedValue);
+    var stored = store.AddImport(imported);
+    var active = ParameterLibrary.Active.SingleOrDefault(entry => entry.Key == stored.Key && entry.Layer == SourceRules.DeviceLayer);
+    return Results.Json(new
+    {
+        import = stored,
+        activated = false,
+        activeValue = active?.ValueText,
+        hardwareAccepted = false
+    });
+});
+
+app.MapPost("/api/runs", async (HttpRequest request, SqliteTraceStore store) =>
+{
+    var bytes = await ReadBodyAsync(request);
+    if (bytes is null)
+    {
+        return Results.Json(new { executed = false, hardwareAccepted = false }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var result = RecipeValidator.Validate(bytes);
+    if (!result.Ok || result.Recipe is null)
+    {
+        return Results.Json(new { executed = false, hardwareAccepted = false, errors = result.Errors }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var attempt = store.AddRefusal(result.Recipe.Name, result.Recipe.Sha256, result.Recipe.CanonicalJson, result.Recipe.Seed);
+    return Results.Json(new
+    {
+        executed = false,
+        hardwareAccepted = false,
+        measuredErrorBits = (int?)null,
+        attempt
+    }, statusCode: StatusCodes.Status409Conflict);
+});
+
+app.MapGet("/api/runs", (SqliteTraceStore store) => Results.Json(new { runs = store.Attempts(), csvNote = "无实测错误数" }));
+
+app.MapPost("/api/runs/{id}/cancel", (string id, SqliteTraceStore store) =>
+{
+    var changed = store.CancelBeforeStart(id);
+    var attempt = store.GetAttempt(id);
+    return attempt is null
+        ? Results.Json(new { error = "not_found" }, statusCode: StatusCodes.Status404NotFound)
+        : Results.Json(new { changed, attempt, hardwareAccepted = false, measuredErrorBits = (int?)null });
+});
+
+app.MapGet("/api/runs/export.csv", (SqliteTraceStore store) =>
+    Results.File(Encoding.UTF8.GetBytes(SqliteTraceStore.Csv(store.Attempts())), "text/csv; charset=utf-8", "run-attempts.csv"));
 
 app.MapPost("/api/jobs", async (HttpRequest request, JobService jobs) =>
 {
