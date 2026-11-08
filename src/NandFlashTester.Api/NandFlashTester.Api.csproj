@@ -18,4 +18,16 @@
     <InternalsVisibleTo Include="NandFlashTester.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\scripts\windows\NandFlashTester.cmd" Link="NandFlashTester.cmd" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\scripts\windows\stop.ps1" Link="stop.ps1" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyFrontendToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <FrontendDist Include="$(MSBuildProjectDirectory)\..\..\web\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDist)" DestinationFiles="@(FrontendDist->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\..\web\dist\index.html')" />
+  </Target>
+
 </Project>

@@ -1,5 +1,22 @@
 import type { DeviceInfo, JobDetail, JobSummary, ScopeItem } from "./types";
 
+export interface SessionExecution {
+  sessionId: string;
+  stateText: string;
+  hardwareAccepted: boolean;
+  bytesEmitted: number;
+  conclusion: string;
+  etaNote: string;
+  commands: { commandId: string; intentText: string; stateText: string; sent: boolean; reason: string; nextStep: string }[];
+}
+
+export interface MaterialView {
+  realConfigEnabled: boolean;
+  partNumber: string | null;
+  reason: string;
+  rate: { massProductionCapMtPerS: number; ratedMtPerS: number | null; actualCoveredMtPerS: number | null };
+}
+
 async function read<T>(response: Response): Promise<T> {
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
@@ -50,6 +67,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: recipeText
     }).then((response) => read<{ jobId: string }>(response)),
+  openSession: () => fetch("/api/sessions", { method: "POST" }).then((response) => read<{ sessionId: string }>(response)),
+  executeSession: (sessionId: string, recipeText: string) =>
+    fetch(`/api/sessions/${sessionId}/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: recipeText
+    }).then((response) => read<SessionExecution>(response)),
+  materials: () => fetch("/api/materials").then((response) => read<MaterialView>(response)),
+  draftLoopback: () => fetch("/api/management/draft/loopback", { method: "POST" }).then((response) => read<{ label: string; liveConnectAllowed: boolean }>(response)),
   jobs: () => fetch("/api/jobs").then((response) => read<{ jobs: JobSummary[] }>(response)),
   job: (jobId: string) => fetch(`/api/jobs/${jobId}`).then((response) => read<JobDetail>(response)),
   cancel: (jobId: string) =>

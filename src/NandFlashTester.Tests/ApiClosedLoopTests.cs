@@ -330,8 +330,13 @@ public class ApiClosedLoopTests
         using var client = app.CreateClient();
         using var meta = JsonDocument.Parse(await (await client.GetAsync("/api/meta")).Content.ReadAsStringAsync());
         Assert.Equal(36, meta.RootElement.GetProperty("itemCount").GetInt32());
-        Assert.Equal(6, meta.RootElement.GetProperty("implementedSubsetCount").GetInt32());
-        Assert.True(meta.RootElement.GetProperty("simulationOnly").GetBoolean());
+        Assert.True(meta.RootElement.GetProperty("partialCount").GetInt32() >= 5);
+        Assert.False(meta.RootElement.GetProperty("simulationOnly").GetBoolean());
+        Assert.False(meta.RootElement.GetProperty("hardwareAccepted").GetBoolean());
+        Assert.False(meta.RootElement.GetProperty("icdProvided").GetBoolean());
+        Assert.False(meta.RootElement.GetProperty("wireProtocolAssumed").GetBoolean());
+        Assert.False(meta.RootElement.GetProperty("windowsExecutionVerified").GetBoolean());
+        Assert.False(meta.RootElement.GetProperty("sslCompatibilityLayer").GetBoolean());
         Assert.False(meta.RootElement.GetProperty("claimsMeasuredThroughput").GetBoolean());
         Assert.False(meta.RootElement.GetProperty("localDeliveryPathWritten").GetBoolean());
         Assert.False(meta.RootElement.GetProperty("jsonEntryIsSslCompatible").GetBoolean());
@@ -340,12 +345,14 @@ public class ApiClosedLoopTests
         Assert.Contains("不是 SSL", meta.RootElement.GetProperty("expertEntryLocation").GetString(), StringComparison.Ordinal);
         Assert.Equal(PhaseScope.Items.Count, meta.RootElement.GetProperty("items").GetArrayLength());
         var items = meta.RootElement.GetProperty("items").EnumerateArray().ToList();
-        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F14" && item.GetProperty("status").GetString()!.StartsWith("未实现", StringComparison.Ordinal));
-        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F16" && item.GetProperty("status").GetString()!.Contains("未实现", StringComparison.Ordinal));
+        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F14" && item.GetProperty("status").GetString()!.Contains("待输入", StringComparison.Ordinal));
+        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F16" && item.GetProperty("status").GetString()!.Contains("待输入", StringComparison.Ordinal));
         Assert.Contains(items, item => item.GetProperty("id").GetString() == "F24" && item.GetProperty("status").GetString()!.Contains("不是 FTL", StringComparison.Ordinal));
-        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F29" && item.GetProperty("status").GetString()!.StartsWith("未实现", StringComparison.Ordinal));
-        Assert.Equal(6, items.Count(item => item.GetProperty("status").GetString()!.StartsWith("已实现子集", StringComparison.Ordinal)));
+        Assert.Contains(items, item => item.GetProperty("id").GetString() == "F29" && item.GetProperty("status").GetString()!.Contains("待输入", StringComparison.Ordinal));
+        Assert.Contains(items, item => item.GetProperty("status").GetString()!.Contains("冲突待Bao取舍", StringComparison.Ordinal) || item.GetProperty("bucket").GetString() == "冲突待Bao取舍");
         Assert.DoesNotContain(items, item => item.GetProperty("status").GetString()!.Contains("已验收", StringComparison.Ordinal));
+        Assert.Contains(meta.RootElement.GetProperty("conflictsForBao").EnumerateArray(), item => item.GetString()!.Contains("Bao", StringComparison.Ordinal));
+        Assert.Contains(meta.RootElement.GetProperty("missingLegitimateSources").EnumerateArray(), item => item.GetString()!.Contains("旧手册", StringComparison.Ordinal));
     }
 
     private static async Task<Posted> PostJobAsync(HttpClient client, string json, string? deviceId = null)

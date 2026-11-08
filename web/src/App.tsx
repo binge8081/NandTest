@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, jobCsvUrl } from "./api";
+import { api, jobCsvUrl, type MaterialView, type SessionExecution } from "./api";
 import type { DeviceInfo, JobDetail, JobSummary, RecipeShape, ScopeItem } from "./types";
 
 const emptyRecipe = (): RecipeShape => ({
@@ -34,6 +34,8 @@ export function App() {
   const [notice, setNotice] = useState<{ reason: string; next: string } | null>(null);
   const [expertNote, setExpertNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [session, setSession] = useState<SessionExecution | null>(null);
+  const [materials, setMaterials] = useState<MaterialView | null>(null);
 
   useEffect(() => {
     api.device().then(setDevice).catch((error: Error) => setNotice({ reason: error.message, next: "确认本机 API 已启动，然后刷新此页。" }));
@@ -41,6 +43,7 @@ export function App() {
     api.meta().then((meta) => setScope(meta.items)).catch(() => setScope([]));
     api.presets().then((body) => setPresets(body.presets)).catch(() => setPresets([]));
     api.jobs().then((body) => setJobs(body.jobs)).catch(() => setJobs([]));
+    api.materials().then(setMaterials).catch(() => setMaterials(null));
   }, []);
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export function App() {
   }, [selectedId]);
 
   const active = detail?.status === "pending" || detail?.status === "running";
-  const remaining = useMemo(() => scope.filter((item) => !item.status.startsWith("已实现子集")), [scope]);
+  const remaining = useMemo(() => scope.filter((item) => !item.status.startsWith("部分")), [scope]);
 
   function applyText(next: string) {
     setRecipeText(next);
@@ -130,8 +133,10 @@ export function App() {
     setBusy(true);
     setNotice(null);
     try {
-      const created = await api.createJob(recipeText);
-      setSelectedId(created.jobId);
+      const opened = await api.openSession();
+      const executed = await api.executeSession(opened.sessionId, recipeText);
+      setSession(executed);
+      setSelectedId(null);
     } catch (error) {
       const body = (error as { body?: { details?: string[]; message?: string } }).body;
       setServerErrors(body?.details ?? []);
@@ -161,14 +166,28 @@ export function App() {
     <div className="page">
       <header className="top">
         <div>
-          <p className="eyebrow">NandTest · 首个模拟闭环</p>
-          <h1>NAND 擦写读模拟</h1>
+          <p className="eyebrow">新平台 NAND 测试 · Windows 11 x64 上位机</p>
+          <h1>NAND 测试</h1>
         </div>
         <p className="runtime">{framework || ".NET"} · SQLite · 中文操作台</p>
       </header>
       <div className="banner" role="status">
-        当前设备是模拟替身 sim-dut-1。计数来自模拟介质的逐字节比较，不是实机吞吐、电压、温度或量产结论。
+        设备来源是新平台实机路径，当前未接入。器件 datasheet 与平台 ICD 不能互相代替；真实规格未启用。管理草案只读，默认禁止实机连接。测试夹具结果不能标实机通过。
       </div>
+      {materials && (
+        <p className="fine">器件资料：{materials.realConfigEnabled ? "已启用" : "未启用"}。{materials.reason} 量产验收上限 {materials.rate.massProductionCapMtPerS} MT/s，额定 {materials.rate.ratedMtPerS ?? "未提供"}，实际覆盖 {materials.rate.actualCoveredMtPerS ?? "未测"}。</p>
+      )}
+      {session && (
+        <section className="panel">
+          <h2>设备会话 {session.conclusion}</h2>
+          <p className="fine">会话 {session.sessionId} · 状态 {session.stateText} · 已发送字节 {session.bytesEmitted} · 实机通过 {session.hardwareAccepted ? "是" : "否"}。{session.etaNote}</p>
+          <ul>
+            {session.commands.map((command) => (
+              <li key={command.commandId}>{command.intentText} · {command.stateText} · {command.sent ? "已发送" : "未发送"}。{command.reason} {command.nextStep}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       {notice && (
         <div className="notice" role="alert">
           <p><strong>原因</strong> {notice.reason}</p>
@@ -266,7 +285,7 @@ export function App() {
             </div>
             <p className="fine">拓扑上限只用于这块最小模拟介质，不是 1056/528 量产拓扑。演示节拍只为了看逐步进度，不是器件忙时间。</p>
             <div className="row">
-              <button type="button" className="primary" disabled={busy || active || !!parseError} onClick={() => void run()}>运行模拟</button>
+              <button type="button" className="primary" disabled={busy || active || !!parseError} onClick={() => void run()}>提交到设备会话</button>
               <button type="button" disabled={!active} onClick={() => void cancel()}>取消</button>
             </div>
           </section>

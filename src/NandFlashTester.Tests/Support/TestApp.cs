@@ -41,22 +41,26 @@ public sealed class TestApp : WebApplicationFactory<Program>
 {
     private readonly IJobPacing _pacing;
 
-    public TestApp(string databasePath, IJobPacing? pacing = null)
+    public TestApp(string databasePath, IJobPacing? pacing = null, string platformMode = "AutomatedTest")
     {
         DatabasePath = databasePath;
+        PlatformMode = platformMode;
         _pacing = pacing ?? new NoDelayPacing();
     }
+
+    public string PlatformMode { get; }
 
     public string DatabasePath { get; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Development");
+        builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["DatabasePath"] = DatabasePath
+                ["DatabasePath"] = DatabasePath,
+                ["Platform:Mode"] = PlatformMode
             });
         });
         builder.ConfigureTestServices(services =>

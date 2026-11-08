@@ -1,0 +1,29 @@
+name: windows-x64
+
+on:
+  pull_request:
+  push:
+    branches:
+      - cursor/nand-sim-closed-loop-0434
+
+jobs:
+  win-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test on Windows
+        run: dotnet test NandFlashTester.slnx -c Release
+      - name: Build frontend
+        run: npm ci
+        working-directory: web
+      - name: Compile frontend
+        run: npm run build
+        working-directory: web
+      - name: Publish self-contained win-x64
+        run: dotnet publish src/NandFlashTester.Api/NandFlashTester.Api.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
