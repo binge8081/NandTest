@@ -138,8 +138,14 @@ public class ScriptCompilerTests
             Assert.Contains("领存NFA1000闪存测试仪", csv, StringComparison.Ordinal);
             Assert.Contains("硬件未执行", csv, StringComparison.Ordinal);
             Assert.Contains("未统计", csv, StringComparison.Ordinal);
+            Assert.Contains("未执行", csv, StringComparison.Ordinal);
+            Assert.Contains("不是已完成的擦写读", csv, StringComparison.Ordinal);
             Assert.Equal("未统计", planBody.RootElement.GetProperty("errorCountText").GetString());
             Assert.Equal(JsonValueKind.Null, planBody.RootElement.GetProperty("errorBitCount").ValueKind);
+            Assert.Equal("not_executed", planBody.RootElement.GetProperty("errorClass").GetString());
+            Assert.Equal("未执行", planBody.RootElement.GetProperty("errorClassText").GetString());
+            Assert.Equal(0, planBody.RootElement.GetProperty("findings").GetArrayLength());
+            Assert.True(planBody.RootElement.GetProperty("countsAreHostPlan").GetBoolean());
             Assert.False(planBody.RootElement.GetProperty("measured").GetBoolean());
 
             using var map = JsonDocument.Parse(await (await client.GetAsync("/api/scripts/map")).Content.ReadAsStringAsync());
@@ -170,12 +176,20 @@ public class ScriptCompilerTests
         Assert.False(clean.HardwareExecuted);
         Assert.Equal(0, clean.BytesEmitted);
         Assert.Equal(0, clean.ErrorBitCount);
+        Assert.Equal("match", clean.ErrorClass);
+        Assert.Empty(clean.Findings);
         Assert.Equal(EvidenceClasses.AutomatedTest, clean.EvidenceClass);
 
         var flipped = ScriptInterpreter.Run(plan, new IsolatedPageDriver((0, 0, 0, 0)), ScriptLimits.Default);
         Assert.Equal(1, flipped.ErrorBitCount);
+        Assert.Equal("bit_mismatch", flipped.ErrorClass);
         Assert.False(flipped.Measured);
-        Assert.Contains(flipped.Steps, step => step.Op == "compare" && step.Message.Contains("不是实测", StringComparison.Ordinal));
+        Assert.Equal(0, flipped.BytesEmitted);
+        var finding = Assert.Single(flipped.Findings);
+        Assert.Equal(0, finding.Page);
+        Assert.Equal(0, finding.ByteOffset);
+        Assert.Equal(0, finding.Bit);
+        Assert.Contains(flipped.Steps, step => step.Op == "compare" && step.ErrorClass == "bit_mismatch" && step.Message.Contains("不是实测", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -185,12 +199,15 @@ public class ScriptCompilerTests
         var run = ScriptInterpreter.Run(plan, new BlockedScriptDriver(), ScriptLimits.Default);
         Assert.Null(run.ErrorBitCount);
         Assert.Equal("未统计", run.ErrorCountText);
+        Assert.Equal("not_executed", run.ErrorClass);
+        Assert.Empty(run.Findings);
         Assert.Equal(0, run.BytesEmitted);
         Assert.False(run.Measured);
         Assert.Equal(7, run.Steps.Count);
         Assert.All(run.Steps, step =>
         {
             Assert.Equal("不可执行", step.State);
+            Assert.Equal("not_executed", step.ErrorClass);
             Assert.False(step.HardwareExecuted);
         });
         Assert.Contains(run.Steps, step => step.Message.Contains("未发送", StringComparison.Ordinal));

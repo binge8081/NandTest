@@ -120,7 +120,7 @@ function ProductEntry() {
       setPlan(planned.plan);
       setLogs(planned.logs);
       setSha(planned.script.sha256);
-      setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。错误计数未统计。硬件未执行。`);
+      setNote(`主机计划已展开。擦除 ${planned.plan.eraseCount}，写入 ${planned.plan.programCount}，读回 ${planned.plan.readCount}，比较 ${planned.plan.compareCount}。错误计数未统计，错误分类未执行。这不是已完成的擦写读。硬件未执行。`);
       await refreshList();
     } catch (error) {
       const body = (error as { body?: { diagnostics?: ScriptDiagnostic[] } }).body;
@@ -210,7 +210,7 @@ function ProductEntry() {
             {sha && <p className="fine">脚本哈希 <span className="mono">{sha}</span></p>}
             {plan && (
               <div>
-                <p className="fine">主机计划 · {plan.executionState} · 擦除 {plan.eraseCount} · 写入 {plan.programCount} · 读回 {plan.readCount} · 比较 {plan.compareCount} · 错误计数未统计 · 硬件未执行</p>
+                <p className="fine">主机计划 · {plan.executionState} · 擦除 {plan.eraseCount} · 写入 {plan.programCount} · 读回 {plan.readCount} · 比较 {plan.compareCount} · 错误计数未统计 · 错误分类未执行 · 不是已完成的擦写读 · 硬件未执行</p>
                 <table>
                   <thead><tr><th>序号</th><th>行</th><th>步骤</th><th>块</th><th>页</th><th>状态</th></tr></thead>
                   <tbody>

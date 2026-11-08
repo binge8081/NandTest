@@ -112,7 +112,7 @@ public static class ScriptEndpoints
 
         var driver = new BlockedScriptDriver();
         var run = ScriptInterpreter.Run(compiled.Plan, driver, ScriptLimits.Default);
-        if (run.HardwareExecuted || run.Measured || run.BytesEmitted != 0 || run.ErrorBitCount is not null)
+        if (run.HardwareExecuted || run.Measured || run.BytesEmitted != 0 || run.ErrorBitCount is not null || run.ErrorClass != "not_executed" || run.Findings.Count != 0)
         {
             throw new InvalidOperationException("配置计划产生了实测或发送。");
         }
@@ -133,7 +133,11 @@ public static class ScriptEndpoints
             bytesEmitted = run.BytesEmitted,
             errorBitCount = run.ErrorBitCount,
             errorCountText = run.ErrorCountText,
+            errorClass = run.ErrorClass,
+            errorClassText = CompareClassifier.Text(run.ErrorClass),
+            findings = run.Findings,
             measured = run.Measured,
+            countsAreHostPlan = true,
             sent = false,
             script = Summary(saved),
             plan = PlanView(compiled.Plan),

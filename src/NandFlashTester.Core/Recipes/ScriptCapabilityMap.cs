@@ -10,7 +10,7 @@ public static class ScriptCapabilityMap
         new("语法与语义校验定位", "主机已实现", "ScriptCompiler；ScriptCompilerTests.Errors_carry_line_and_column_and_reject_unbounded_or_unreadable_compare", "无"),
         new("参数变量、有界循环、分支", "主机已实现", "循环 1 到 32，嵌套最多 2 层；ScriptCompilerTests.If_keeps_only_the_taken_branch", "无"),
         new("擦除、写入、读回、比较计数", "主机已实现", "ScriptPlan 计数；ScriptCompilerTests.Example_expands_bounded_counts_without_hardware_execution", "计数来自主机计划，不是实测"),
-        new("错误计数", "待实机", "ScriptInterpreter 与 IsolatedPageDriver 只在自动化测试里对隔离介质计数", "产品路径写未统计，不把隔离计数当成实测成功"),
+        new("错误计数与分类", "待实机", "CompareClassifier；Isolated_driver_counts_bits_without_claiming_a_measurement 只分类隔离介质", "正式路径分类为未执行，计数未统计，主机计划不是已完成的擦写读"),
         new("进度、停止、导出追溯", "主机已实现", "script_logs 与导出 CSV", "停止发生在发送之前"),
         new("硬件操作", "不可执行", "BlockedScriptDriver 调用 SessionEngine.BlockBeforeSend", "待协议摘录和样机"),
         new("单步调试", "未实现", "PhaseScope F07 单步调试", "原 P1，缺资料，待 Bao 取舍，不猜测"),

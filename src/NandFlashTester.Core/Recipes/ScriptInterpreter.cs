@@ -16,7 +16,8 @@ public sealed record ScriptStepLog(
     string State,
     string Message,
     int? ErrorBitCount,
-    bool HardwareExecuted);
+    bool HardwareExecuted,
+    string ErrorClass);
 
 public sealed record ScriptRun(
     string EvidenceClass,
@@ -24,8 +25,10 @@ public sealed record ScriptRun(
     bool Measured,
     int? ErrorBitCount,
     string ErrorCountText,
+    string ErrorClass,
     int BytesEmitted,
     IReadOnlyList<ScriptStepLog> Steps,
+    IReadOnlyList<CompareFinding> Findings,
     string StopReason);
 
 public interface IScriptDriver
@@ -134,8 +137,10 @@ public static class ScriptInterpreter
         var started = Stopwatch.StartNew();
         Func<TimeSpan> now = elapsed ?? (() => started.Elapsed);
         var steps = new List<ScriptStepLog>();
+        var findings = new List<CompareFinding>();
         var errorBits = 0;
         var compared = false;
+        var mismatch = false;
         string? stop = null;
 
         foreach (var action in plan.Actions)
@@ -161,35 +166,59 @@ public static class ScriptInterpreter
             var refusal = driver.Refuse(action.Op);
             if (refusal is not null)
             {
-                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "不可执行", refusal, null, false));
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "不可执行", refusal + " 错误分类：未执行。这不是已完成的擦写读。", null, false, "not_executed"));
                 continue;
             }
 
             try
             {
-                var bits = Apply(plan, action, driver);
-                if (bits is not null)
+                var classification = Apply(plan, action, driver);
+                if (classification is not null)
                 {
                     compared = true;
-                    errorBits += bits.Value;
+                    errorBits += classification.BitCount ?? 0;
+                    mismatch |= classification.Class == "bit_mismatch";
+                    foreach (var finding in classification.Findings)
+                    {
+                        if (findings.Count < CompareClassifier.MaxFindings)
+                        {
+                            findings.Add(finding);
+                        }
+                    }
                 }
 
-                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "测试介质", bits is null ? "隔离测试介质已记录这一步。不是实测。" : $"隔离测试介质比较出 {bits.Value} 个不一致位。不是实测。", bits, false));
+                var message = classification is null
+                    ? "隔离测试介质已记录这一步。不是实测，也不是实机擦写读。"
+                    : classification.Class == "match"
+                        ? "隔离测试介质比较一致。不是实测。"
+                        : $"隔离测试介质比较出 {classification.BitCount} 个不一致位。不是实测。";
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "测试介质", message, classification?.BitCount, false, classification?.Class ?? "recorded"));
             }
             catch (ScriptLimitException ex)
             {
                 stop = ex.Message;
-                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "已停止", ex.Message, null, false));
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "已停止", ex.Message, null, false, "not_executed"));
                 break;
             }
         }
 
         int? reportedBits = driver.AllowsMedia && compared ? errorBits : null;
         var text = reportedBits is null ? "未统计" : reportedBits.Value.ToString();
-        return new ScriptRun(driver.EvidenceClass, false, false, reportedBits, text, driver.EmitCount, steps, stop ?? "计划走完。硬件未执行。");
+        var errorClass = !driver.AllowsMedia || !compared ? "not_executed" : mismatch ? "bit_mismatch" : "match";
+        return new ScriptRun(
+            driver.EvidenceClass,
+            false,
+            false,
+            reportedBits,
+            text,
+            errorClass,
+            driver.EmitCount,
+            steps,
+            findings,
+            stop ?? "计划走完。硬件未执行。");
     }
 
-    private static int? Apply(ScriptPlan plan, ScriptAction action, IScriptDriver driver)
+    private static CompareClass? Apply(ScriptPlan plan, ScriptAction action, IScriptDriver driver)
     {
         switch (action.Op)
         {
@@ -205,27 +234,9 @@ public static class ScriptInterpreter
             case "compare":
                 var expected = PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, plan.Seed, action.Block, action.Page ?? 0);
                 var actual = driver.Read(action.Block, action.Page ?? 0);
-                return CountBits(expected, actual);
+                return CompareClassifier.Classify(action.Page ?? 0, expected, actual);
             default:
                 throw new ScriptLimitException($"步骤 {action.Op} 不能执行。");
         }
-    }
-
-    private static int CountBits(ReadOnlySpan<byte> expected, ReadOnlySpan<byte> actual)
-    {
-        var bits = 0;
-        var length = Math.Min(expected.Length, actual.Length);
-        for (var i = 0; i < length; i++)
-        {
-            var xor = (byte)(expected[i] ^ actual[i]);
-            while (xor != 0)
-            {
-                bits += xor & 1;
-                xor >>= 1;
-            }
-        }
-
-        bits += Math.Abs(expected.Length - actual.Length) * 8;
-        return bits;
     }
 }

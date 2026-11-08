@@ -1,4 +1,7 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using NandFlashTester.Core.Materials;
+using NandFlashTester.Tests.Support;
 
 namespace NandFlashTester.Tests;
 
@@ -112,5 +115,77 @@ public class DeviceMaterialTests
         Assert.False(cap.Enabled);
         Assert.Equal("2400", cap.ValueText);
         Assert.Contains("不是所有厂商", cap.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Http_boundary_keeps_wd_cap_temperature_and_datasheet_fields_closed()
+    {
+        await using var app = new TestApp(TestApp.NewDatabasePath(), platformMode: "Production");
+        using var client = app.CreateClient();
+
+        var claimed = await client.PostAsJsonAsync("/api/materials/claim", new
+        {
+            partNumber = "WD-EXAMPLE",
+            sku = "industrial",
+            documentId = "datasheet-claim",
+            revision = "1",
+            chapter = "4.2",
+            ratedMtPerS = 3200,
+            voltageMillivolts = 2700,
+            pageSizeBytes = 16384
+        });
+        using var claimBody = JsonDocument.Parse(await claimed.Content.ReadAsStringAsync());
+        Assert.False(claimBody.RootElement.GetProperty("realConfigEnabled").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, claimBody.RootElement.GetProperty("partNumber").ValueKind);
+        Assert.False(claimBody.RootElement.GetProperty("rate").GetProperty("capApplies").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, claimBody.RootElement.GetProperty("rate").GetProperty("massProductionCapMtPerS").ValueKind);
+        Assert.All(claimBody.RootElement.GetProperty("fields").EnumerateArray(), field =>
+        {
+            Assert.False(field.GetProperty("enabled").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, field.GetProperty("value").ValueKind);
+        });
+
+        var imported = await client.PostAsJsonAsync("/api/parameters/import", new
+        {
+            key = "voltage",
+            version = "claim-1",
+            documentId = "datasheet-claim",
+            chapter = "3.1",
+            proposedValue = "2700"
+        });
+        using var importBody = JsonDocument.Parse(await imported.Content.ReadAsStringAsync());
+        Assert.False(importBody.RootElement.GetProperty("activated").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, importBody.RootElement.GetProperty("activeValue").ValueKind);
+        Assert.False(importBody.RootElement.GetProperty("import").GetProperty("enabled").GetBoolean());
+
+        var coverage = await client.PostAsJsonAsync("/api/materials/coverage", new
+        {
+            requestedMtPerS = 3200,
+            vendor = "WD",
+            skuClass = "commercial-0-70",
+            temperatures = new[] { 0, 25, 70 },
+            skuSpecVerified = true
+        });
+        Assert.Equal(200, (int)coverage.StatusCode);
+        using var coverageBody = JsonDocument.Parse(await coverage.Content.ReadAsStringAsync());
+        Assert.False(coverageBody.RootElement.GetProperty("realDeviceAllowed").GetBoolean());
+        Assert.False(coverageBody.RootElement.GetProperty("skuSpecVerified").GetBoolean());
+        Assert.False(coverageBody.RootElement.GetProperty("rate").GetProperty("capApplies").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, coverageBody.RootElement.GetProperty("rate").GetProperty("massProductionCapMtPerS").ValueKind);
+        Assert.True(coverageBody.RootElement.GetProperty("temperature").GetProperty("withinCandidate").GetBoolean());
+        Assert.False(coverageBody.RootElement.GetProperty("temperature").GetProperty("devicePermissionGranted").GetBoolean());
+
+        var outside = await client.PostAsJsonAsync("/api/materials/coverage", new
+        {
+            vendor = "WD",
+            skuClass = "industrial",
+            temperatures = new[] { 100 },
+            skuSpecVerified = true
+        });
+        Assert.Equal(400, (int)outside.StatusCode);
+        using var outsideBody = JsonDocument.Parse(await outside.Content.ReadAsStringAsync());
+        Assert.False(outsideBody.RootElement.GetProperty("realDeviceAllowed").GetBoolean());
+        Assert.False(outsideBody.RootElement.GetProperty("temperature").GetProperty("devicePermissionGranted").GetBoolean());
+        Assert.False(outsideBody.RootElement.GetProperty("temperature").GetProperty("withinCandidate").GetBoolean());
     }
 }
