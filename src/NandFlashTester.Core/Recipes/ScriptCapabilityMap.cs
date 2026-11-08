@@ -6,6 +6,7 @@ public static class ScriptCapabilityMap
 {
     public static IReadOnlyList<ScriptCapability> Items { get; } =
     [
+        new("源脚本命令文本", "主机已实现", "SourceScript；SourceScriptTests。REPEAT、变量运算、BKERAS、PGPROG、PGRDCP 进入同一主机计划", "CMND、SNDAD、SETFTR、STATUS、BUSYTM、ECCANA 和文件路径只识别不发送；图案字节不声称与外部执行器逐字节一致"),
         new("新建、编辑、保存、打开", "主机已实现", "SqliteScriptStore；ScriptCompilerTests.Saved_script_plans_stops_and_exports_without_sending", "无"),
         new("语法与语义校验定位", "主机已实现", "ScriptCompiler；ScriptCompilerTests.Errors_carry_line_and_column_and_reject_unbounded_or_unreadable_compare", "无"),
         new("参数变量、有界循环、分支", "主机已实现", "循环 1 到 32，嵌套最多 2 层；ScriptCompilerTests.If_keeps_only_the_taken_branch", "无"),

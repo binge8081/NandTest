@@ -12,7 +12,8 @@ public sealed record ScriptAction(
     int Block,
     int? Page,
     bool HardwareExecuted,
-    string State);
+    string State,
+    uint? PatternSeed = null);
 
 public sealed record ScriptPlan(
     string Name,
@@ -24,7 +25,8 @@ public sealed record ScriptPlan(
     int CompareCount,
     bool HardwareExecuted,
     string ExecutionState,
-    IReadOnlyList<ScriptAction> Actions);
+    IReadOnlyList<ScriptAction> Actions,
+    int? StopWhenBitErrorsAbove = null);
 
 public sealed record ScriptCompileResult(bool Ok, ScriptPlan? Plan, IReadOnlyList<ScriptDiagnostic> Diagnostics)
 {
@@ -65,6 +67,11 @@ public static class ScriptCompiler
 
     public static ScriptCompileResult Compile(string? text)
     {
+        if (SourceScript.LooksLike(text))
+        {
+            return SourceScript.Compile(text!);
+        }
+
         var diagnostics = new List<ScriptDiagnostic>();
         if (string.IsNullOrEmpty(text))
         {

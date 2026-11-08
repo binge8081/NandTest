@@ -163,6 +163,24 @@ public static class ScriptInterpreter
                 break;
             }
 
+            if (action.Op == "withheld")
+            {
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "不可执行", "这条语句已识别，但不会发送，也不是已完成的擦写读。", null, false, "not_executed"));
+                continue;
+            }
+
+            if (action.Op == "wait")
+            {
+                steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "主机计时", "等待只计入主机时间上限，没有休眠，也没有发送。", null, false, "not_executed"));
+                if (now() > limits.MaxDuration)
+                {
+                    stop = "超过时间上限，后续步骤没有执行。";
+                    break;
+                }
+
+                continue;
+            }
+
             var refusal = driver.Refuse(action.Op);
             if (refusal is not null)
             {
@@ -178,6 +196,10 @@ public static class ScriptInterpreter
                     compared = true;
                     errorBits += classification.BitCount ?? 0;
                     mismatch |= classification.Class == "bit_mismatch";
+                    if (plan.StopWhenBitErrorsAbove is int limit && errorBits > limit)
+                    {
+                        stop = "位错误数超过停止条件，后续步骤没有执行。";
+                    }
                     foreach (var finding in classification.Findings)
                     {
                         if (findings.Count < CompareClassifier.MaxFindings)
@@ -193,6 +215,10 @@ public static class ScriptInterpreter
                         ? "隔离测试介质比较一致。不是实测。"
                         : $"隔离测试介质比较出 {classification.BitCount} 个不一致位。不是实测。";
                 steps.Add(new ScriptStepLog(action.Index, action.Line, action.Op, "测试介质", message, classification?.BitCount, false, classification?.Class ?? "recorded"));
+                if (stop is not null)
+                {
+                    break;
+                }
             }
             catch (ScriptLimitException ex)
             {
@@ -226,13 +252,13 @@ public static class ScriptInterpreter
                 driver.Erase(action.Block);
                 return null;
             case "program":
-                driver.Program(action.Block, action.Page ?? 0, PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, plan.Seed, action.Block, action.Page ?? 0));
+                driver.Program(action.Block, action.Page ?? 0, PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, action.PatternSeed ?? plan.Seed, action.Block, action.Page ?? 0));
                 return null;
             case "read":
                 _ = driver.Read(action.Block, action.Page ?? 0);
                 return null;
             case "compare":
-                var expected = PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, plan.Seed, action.Block, action.Page ?? 0);
+                var expected = PatternGenerator.Generate(PatternKind.Increment, IsolatedPageDriver.PageSize, action.PatternSeed ?? plan.Seed, action.Block, action.Page ?? 0);
                 var actual = driver.Read(action.Block, action.Page ?? 0);
                 return CompareClassifier.Classify(action.Page ?? 0, expected, actual);
             default:

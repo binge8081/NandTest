@@ -203,7 +203,7 @@ function ProductEntry() {
               <h2>自定义脚本</h2>
               <span className="pill">主机计划</span>
             </div>
-            <p className="fine">可声明变量、有界循环和 if 分支。校验会标出行列。展开的是主机计划，硬件未执行。当前脚本不是完整专业脚本。</p>
+            <p className="fine">可声明变量、有界循环和 if 分支，也可写 BKERAS、PGPROG、PGRDCP、REPEAT、VSET08 这类命令。校验会标出行列。展开的是主机计划，不是已完成的擦写读。CMND、SNDAD、SETFTR 不会发送。当前脚本不是完整专业脚本。</p>
             <textarea aria-label="自定义脚本" spellCheck={false} value={scriptText} onChange={(event) => { setScriptText(event.target.value); setNote(null); setLogs([]); }} />
             {diagnostics.length > 0 && <ul className="errors">{diagnostics.map((item) => <li key={`${item.line}-${item.column}-${item.message}`}>{item.message}</li>)}</ul>}
             {note && <p className="fine">{note}</p>}
