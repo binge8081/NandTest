@@ -13,3 +13,5 @@ reference-private/
 confidential/
 *.user
 .DS_Store
+src/NandFlashTester.Api/build-info.json
+web/public/build-info.json

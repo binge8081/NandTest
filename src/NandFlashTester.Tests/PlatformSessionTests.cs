@@ -77,8 +77,27 @@ public class PlatformSessionTests
         using var after = JsonDocument.Parse(await (await client.GetAsync($"/api/sessions/{sessionId}")).Content.ReadAsStringAsync());
         Assert.Equal(0, after.RootElement.GetProperty("commands").GetArrayLength());
 
+        foreach (var path in new[] { "/api/jobs", "/api/jobs/job-1", "/api/jobs/job-1/export.csv", "/api/devices", "/api/devices/sim-dut-1" })
+        {
+            var blocked = await client.GetAsync(path);
+            Assert.Equal(403, (int)blocked.StatusCode);
+            var text = await blocked.Content.ReadAsStringAsync();
+            Assert.Contains("生产模式不能进入或调用内部测试夹具", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("sim-dut", text, StringComparison.Ordinal);
+        }
+
         var fixture = await client.PostAsync("/api/jobs", new StringContent(RecipePresets.SuccessJson, Encoding.UTF8, "application/json"));
         Assert.Equal(403, (int)fixture.StatusCode);
+        var cancel = await client.PostAsync("/api/jobs/job-1/cancel", new StringContent(""));
+        Assert.Equal(403, (int)cancel.StatusCode);
+
+        using var about = JsonDocument.Parse(await (await client.GetAsync("/api/about")).Content.ReadAsStringAsync());
+        Assert.Equal(ProductIdentity.Version, about.RootElement.GetProperty("version").GetString());
+        Assert.Equal("Production", about.RootElement.GetProperty("runtimeMode").GetString());
+        Assert.Equal("Production", about.RootElement.GetProperty("packagedMode").GetString());
+        Assert.Matches("^[0-9a-f]{40}$", about.RootElement.GetProperty("commit").GetString());
+        Assert.False(about.RootElement.GetProperty("fallbackToFixture").GetBoolean());
+        Assert.False(about.RootElement.GetProperty("windowsExecutionVerified").GetBoolean());
 
         using var discovery = JsonDocument.Parse(await (await client.GetAsync("/api/discovery")).Content.ReadAsStringAsync());
         Assert.False(discovery.RootElement.GetProperty("connected").GetBoolean());

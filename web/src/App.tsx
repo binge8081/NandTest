@@ -1,20 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import type { JobSummary, ScopeItem } from "./types";
-import type { MaterialView, ScriptDiagnostic, ScriptDocument, ScriptLog, ScriptPlanView } from "./api";
+import type { ScopeItem } from "./types";
+import type { LotView, MaterialView, ScriptDiagnostic, ScriptDocument, ScriptLog, ScriptPlanView } from "./api";
 
 function configurationScript(name: string, seed: number, block: number, pages: number): string {
   return `name ${name}\nseed ${seed}\nvar block = ${block}\nvar pages = ${pages}\nerase block\nloop pages\n  program block i\n  read block i\n  compare block i\nend\n`;
 }
 
 export function App() {
-  const [entry, setEntry] = useState(window.location.hash === "#/dev-fixture" ? "fixture" : "product");
-  useEffect(() => {
-    const onHash = () => setEntry(window.location.hash === "#/dev-fixture" ? "fixture" : "product");
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  return entry === "fixture" ? <FixtureEntry /> : <ProductEntry />;
+  return <ProductEntry />;
 }
 
 function ProductEntry() {
@@ -36,6 +30,7 @@ function ProductEntry() {
   const [materials, setMaterials] = useState<MaterialView | null>(null);
   const [snapshots, setSnapshots] = useState<{ snapshotId: string; status: string; errorClass: string; bytesEmitted: number; hardwareRecovery: boolean; patternShas: string; reason: string }[]>([]);
   const [scriptMap, setScriptMap] = useState<{ name: string; status: string; gap: string }[]>([]);
+  const [about, setAbout] = useState<{ version: string; commit: string; buildTimeUtc: string; runtimeMode: string; uiMatchesApi: boolean } | null>(null);
 
   useEffect(() => {
     api.health().then((health) => setFramework(health.framework)).catch(() => setFramework(""));
@@ -45,6 +40,7 @@ function ProductEntry() {
     api.scriptList().then((body) => setSaved(body.scripts)).catch(() => setSaved([]));
     api.scriptMap().then((body) => setScriptMap(body.items)).catch(() => setScriptMap([]));
     api.snapshots().then((body) => setSnapshots(body.snapshots)).catch(() => setSnapshots([]));
+    api.about().then(setAbout).catch(() => setAbout(null));
   }, []);
 
   useEffect(() => {
@@ -57,7 +53,7 @@ function ProductEntry() {
     return () => window.clearTimeout(handle);
   }, [scriptText]);
 
-  const remaining = useMemo(() => scope.filter((item) => !item.status.startsWith("部分")), [scope]);
+  const remaining = useMemo(() => scope.filter((item) => !item.status.includes("代码测试")), [scope]);
 
   function writeConfiguration() {
     setScriptText(configurationScript(configName.trim() || "页编程比较", seed, block, pages));
@@ -152,6 +148,7 @@ function ProductEntry() {
           <h1>领存NFA1000闪存测试仪</h1>
         </div>
         <p className="runtime">{framework || ".NET"} · 本机上位机</p>
+        <p className="fine">版本 {about?.version ?? "…"} · 提交 {about?.commit ?? "…"} · 构建 {about?.buildTimeUtc ?? "…"} · 模式 {about?.runtimeMode ?? "…"}{about?.uiMatchesApi ? " · 页面与接口提交一致" : ""}</p>
       </header>
       <div className="banner" role="status">未连接。依赖实机的执行已禁用，不会改用其他介质。</div>
 
@@ -200,6 +197,8 @@ function ProductEntry() {
             </div>
             <p className="fine">执行已禁用：{discoveryReason} 未经 SKU 规格核实，不允许实机。</p>
           </section>
+
+          <LotPanel />
 
           <section className="panel" id="expert-recipe">
             <div className="section-head">
@@ -298,49 +297,100 @@ function ProductEntry() {
             ))}
           </ul>
         </details>
-        <p><a href="#/dev-fixture">自动化测试夹具</a>是单独入口，不是本页的设备，也不会在无设备时自动使用。</p>
+        <p className="fine">内部测试不从本页进入，生产模式也不能调用它。</p>
       </footer>
     </div>
   );
 }
 
-function FixtureEntry() {
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
-  useEffect(() => {
-    api.jobs().then((body) => setJobs(body.jobs)).catch(() => setJobs([]));
-  }, []);
+function LotPanel() {
+  const [name, setName] = useState("lot-a");
+  const [retestLimit, setRetestLimit] = useState(1);
+  const [candidate, setCandidate] = useState("");
+  const [rawEnabled, setRawEnabled] = useState(false);
+  const [quota, setQuota] = useState(64);
+  const [industrial, setIndustrial] = useState(0);
+  const [total, setTotal] = useState(10);
+  const [label, setLabel] = useState("U1");
+  const [note, setNote] = useState<string | null>(null);
+  const [lot, setLot] = useState<LotView | null>(null);
+
+  async function run(action: () => Promise<void>) {
+    try {
+      setNote(null);
+      await action();
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "没有完成。");
+    }
+  }
+
   return (
-    <div className="page">
-      <header className="top">
-        <div>
-          <p className="eyebrow">非产品入口</p>
-          <h1>自动化测试夹具</h1>
-        </div>
-      </header>
-      <div className="banner" role="status">这里只查看测试夹具留下的记录。来源保持为测试夹具，不能改标成实测。生产页面不会自动进入这里。</div>
-      <section className="panel">
-        <p className="fine">当前产品模式不在此启动夹具，也不会因为没有设备而改用夹具执行。</p>
-        {jobs.length === 0 && <p>没有测试夹具记录。</p>}
-        {jobs.length > 0 && (
-          <table>
-            <thead>
-              <tr><th>记录编号</th><th>名称</th><th>来源</th><th>结论</th></tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr key={job.jobId}>
-                  <td className="mono">{job.jobId}</td>
-                  <td>{job.recipeName}</td>
-                  <td>测试夹具</td>
-                  <td>{job.conclusion}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p><a href="#/">返回领存NFA1000闪存测试仪</a></p>
-      </section>
-    </div>
+    <section className="panel" id="lot">
+      <h2>批次</h2>
+      <p className="fine">先保存并锁定配置版本，再按该版本开批次。复测上限只能是 1 或 2。工业计划不能超过总片数的 10%。raw 默认关闭。这里的数量是主机计划，不是实测，也不分档。</p>
+      <div className="form-grid">
+        <label className="wide">配置名称
+          <input value={name} maxLength={64} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label>复测上限
+          <select value={retestLimit} onChange={(event) => setRetestLimit(Number(event.target.value))}>
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+          </select>
+        </label>
+        <label>温度候选
+          <select value={candidate} onChange={(event) => setCandidate(event.target.value)}>
+            <option value="">不选</option>
+            <option value="commercial-0-70">commercial-0-70</option>
+            <option value="commercial-0-85">commercial-0-85</option>
+            <option value="industrial">industrial</option>
+          </select>
+        </label>
+        <label>工业计划
+          <input type="number" min={0} value={industrial} onChange={(event) => setIndustrial(Number(event.target.value))} />
+        </label>
+        <label>总片数
+          <input type="number" min={1} value={total} onChange={(event) => setTotal(Number(event.target.value))} />
+        </label>
+      </div>
+      <label className="row">
+        <input type="checkbox" checked={rawEnabled} onChange={(event) => setRawEnabled(event.target.checked)} />
+        打开主机 raw。限额
+        <input type="number" min={1} max={65536} value={quota} disabled={!rawEnabled} onChange={(event) => setQuota(Number(event.target.value))} />
+      </label>
+      <div className="row">
+        <button type="button" onClick={() => void run(async () => {
+          const created = await api.configCreate({ name, retestLimit, temperatureCandidate: candidate, rawEnabled, rawQuotaBytes: rawEnabled ? quota : 0 });
+          const locked = await api.configLock(created.configId, created.version);
+          const opened = await api.lotOpen({ configId: locked.configId, version: locked.version, industrialPlanned: industrial, totalPlanned: total });
+          setLot(opened);
+          setNote(`已锁定版本 ${locked.version} 并开批次。器件许可没有打开。`);
+        })}>锁定并开批次</button>
+        <input aria-label="片号" value={label} maxLength={64} onChange={(event) => setLabel(event.target.value)} />
+        <button type="button" disabled={!lot} onClick={() => void run(async () => setLot(await api.lotRecord(lot!.lotId, label)))}>记录</button>
+        <button type="button" disabled={!lot} onClick={() => void run(async () => setLot(await api.lotRetest(lot!.lotId, label)))}>复测</button>
+        <button type="button" disabled={!lot || lot.status !== "open"} onClick={() => void run(async () => setLot(await api.lotClose(lot!.lotId)))}>关闭批次</button>
+        {lot && <a href={`/api/lots/${lot.lotId}/export.csv`}>导出</a>}
+      </div>
+      {note && <p className="fine">{note}</p>}
+      {lot && (
+        <table>
+          <thead><tr><th>片号</th><th>次数</th><th>状态</th><th>换座</th><th>分档</th><th>未覆盖</th></tr></thead>
+          <tbody>
+            {lot.attempts.map((item) => (
+              <tr key={item.attemptId}>
+                <td>{item.label}</td>
+                <td>{item.attemptIndex}</td>
+                <td>{item.status}</td>
+                <td>{item.socketChangeRequired ? "是" : "否"}</td>
+                <td>{item.gradesAssigned ? item.grade : "未分档"}</td>
+                <td>{item.uncovered.map((gap) => gap.code).join(" ") || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
 using NandFlashTester.Api.Data;
+using NandFlashTester.Api.Lots;
 using NandFlashTester.Api.Materials;
 using NandFlashTester.Api.Jobs;
 using NandFlashTester.Api.Platform;
@@ -13,6 +14,7 @@ using NandFlashTester.Core.Management;
 using NandFlashTester.Core.Materials;
 using NandFlashTester.Core.Platform;
 using NandFlashTester.Core.Patterns;
+using NandFlashTester.Core.Lots;
 using NandFlashTester.Core.Recipes;
 using NandFlashTester.Core.Scope;
 
@@ -54,6 +56,11 @@ builder.Services.AddSingleton(sp =>
     var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
     return new SqlitePatternStore(databasePath);
 });
+builder.Services.AddSingleton(sp =>
+{
+    var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
+    return new SqliteLotStore(databasePath);
+});
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddSingleton<IJobPacing, NoDelayPacing>();
 builder.Services.AddSingleton<JobService>();
@@ -74,6 +81,7 @@ app.Services.GetRequiredService<SqliteSessionStore>().Initialize();
 app.Services.GetRequiredService<SqliteTraceStore>().Initialize();
 app.Services.GetRequiredService<SqliteScriptStore>().Initialize();
 app.Services.GetRequiredService<SqlitePatternStore>().Initialize();
+app.Services.GetRequiredService<SqliteLotStore>().Initialize();
 app.UseCors("ui");
 
 var bundledUi = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
@@ -101,8 +109,13 @@ app.MapGet("/api/health", () => Results.Json(new
     hardwareAccepted = false,
     icdProvided = false,
     windowsExecutionVerified = false,
-    schema = RecipeContract.SchemaId
+    schema = RecipeContract.SchemaId,
+    identity = BuildInfo.Create(app.Environment.ContentRootPath, webRoot, fixtureEnabled ? PlatformModes.AutomatedTest : PlatformModes.Production)
 }));
+app.MapGet("/api/about", () => Results.Json(BuildInfo.Create(
+    app.Environment.ContentRootPath,
+    webRoot,
+    fixtureEnabled ? PlatformModes.AutomatedTest : PlatformModes.Production)));
 
 app.MapGet("/api/discovery", () => Results.Json(new
 {
@@ -167,13 +180,11 @@ app.MapPost("/api/materials/coverage", (CoverageRequest request) =>
 app.MapPost("/api/patterns", async (HttpRequest request, SqlitePatternStore patterns, IConfiguration configuration) =>
 {
     var quota = new HostPatternQuota(configuration.GetValue("Platform:PatternHostMaxBytes", HostPatternQuota.Default.MaxBytes));
-    if (request.ContentLength is null or <= 0 || request.ContentLength > quota.MaxBytes)
+    var data = await ReadDeclaredAsync(request, quota.MaxBytes);
+    if (data is null)
     {
-        return Results.Json(new { error = "pattern_rejected", message = $"文件超过主机限额 {quota.MaxBytes} 字节。{HostPatternQuota.Role}" }, statusCode: StatusCodes.Status400BadRequest);
+        return Results.Json(new { error = "pattern_rejected", message = $"读取前拒绝：必须先给出不超过 {quota.MaxBytes} 字节的长度。{HostPatternQuota.Role}" }, statusCode: StatusCodes.Status400BadRequest);
     }
-
-    var data = new byte[request.ContentLength.Value];
-    await request.Body.ReadExactlyAsync(data);
     var pageSize = int.TryParse(request.Query["pageSize"], out var parsed) ? parsed : 0;
     var (resource, error) = PatternLibrary.Accept(request.Query["name"], request.Query["version"], pageSize, data, quota);
     if (resource is null)
@@ -332,13 +343,13 @@ app.MapGet("/api/sessions/{id}/export.csv", (string id, SqliteSessionStore store
         : Results.File(Encoding.UTF8.GetBytes(SessionEndpoints.Csv(session)), "text/csv; charset=utf-8", $"{session.SessionId}.csv");
 });
 
-app.MapGet("/api/devices", () =>
-{
-    var resolution = SimulationDeviceCatalog.Resolve(null);
-    return Results.Json(new { devices = new[] { DevicePayload(resolution) } });
-});
+app.MapGet("/api/devices", () => fixtureEnabled
+    ? Results.Json(new { devices = new[] { DevicePayload(SimulationDeviceCatalog.Resolve(null)) } })
+    : Results.Json(new { error = "fixture_disabled", message = "生产模式不能进入或调用内部测试夹具。", executed = false, fallbackToFixture = false }, statusCode: StatusCodes.Status403Forbidden));
 
-app.MapGet("/api/devices/{id}", (string id) => Results.Json(DevicePayload(SimulationDeviceCatalog.Resolve(id))));
+app.MapGet("/api/devices/{id}", (string id) => fixtureEnabled
+    ? Results.Json(DevicePayload(SimulationDeviceCatalog.Resolve(id)))
+    : Results.Json(new { error = "fixture_disabled", message = "生产模式不能进入或调用内部测试夹具。", executed = false, fallbackToFixture = false }, statusCode: StatusCodes.Status403Forbidden));
 
 app.MapGet("/api/recipes/presets", () => Results.Json(new
 {
@@ -394,6 +405,78 @@ app.MapGet("/api/run-snapshots", (SqliteScriptStore store) => Results.Json(new
     hardwareRecovery = false,
     snapshots = store.Snapshots()
 }));
+app.MapPost("/api/sku-configs", (SkuConfigRequest request, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.CreateConfig(store, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/sku-configs/{id}/lock", (string id, int version, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Lock(store, id, version);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/sku-configs/{id}/revise", (string id, SkuConfigRequest request, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Revise(store, id, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/lots", (OpenLotRequest request, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Open(store, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapGet("/api/lots/{id}", (string id, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Get(store, id);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/lots/{id}/units", (string id, UnitLabelRequest request, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Record(store, id, request);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/lots/{id}/units/{label}/retest", (string id, string label, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Retest(store, id, label);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/lots/{id}/units/{label}/attempts/{attempt:int}/raw", async (string id, string label, int attempt, HttpRequest request, SqliteLotStore store) =>
+{
+    int limit;
+    try
+    {
+        limit = store.RawReadLimit(id, label, attempt);
+    }
+    catch (LotRuleException ex)
+    {
+        return Results.Json(new { error = "lot_rule", message = ex.Message, executed = false }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var data = await ReadDeclaredAsync(request, limit);
+    if (data is null)
+    {
+        return Results.Json(new { error = "lot_rule", message = $"读取前拒绝：必须先给出不超过 {limit} 字节的长度。{LotRules.RawQuotaRole}", executed = false }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var (status, body) = LotEndpoints.AttachRaw(store, id, label, attempt, data);
+    return Results.Json(body, statusCode: status);
+});
+app.MapPost("/api/lots/{id}/close", (string id, SqliteLotStore store) =>
+{
+    var (status, body) = LotEndpoints.Close(store, id);
+    return Results.Json(body, statusCode: status);
+});
+app.MapGet("/api/lots/{id}/export.csv", (string id, string? detail, SqliteLotStore store) =>
+{
+    try
+    {
+        return Results.File(Encoding.UTF8.GetBytes(LotEndpoints.Csv(store, id, detail)), "text/csv; charset=utf-8", $"{id}.csv");
+    }
+    catch (LotRuleException ex)
+    {
+        return Results.Json(new { error = "lot_rule", message = ex.Message }, statusCode: StatusCodes.Status400BadRequest);
+    }
+});
 
 app.MapPost("/api/parameters/import", (ParameterImportRequest request, SqliteTraceStore store) =>
 {
@@ -451,13 +534,7 @@ app.MapPost("/api/jobs", async (HttpRequest request, JobService jobs) =>
 {
     if (!fixtureEnabled)
     {
-        return Results.Json(new
-        {
-            error = "fixture_disabled",
-            message = "擦写读夹具只在自动化测试里启用。生产页面不把它当作实机。",
-            executed = false,
-            hardwareAccepted = false
-        }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(FixtureDisabled(), statusCode: StatusCodes.Status403Forbidden);
     }
 
     var bytes = await ReadBodyAsync(request);
@@ -479,24 +556,44 @@ app.MapPost("/api/jobs", async (HttpRequest request, JobService jobs) =>
 
 app.MapGet("/api/jobs", (SqliteJobStore store, int? limit) =>
 {
+    if (!fixtureEnabled)
+    {
+        return Results.Json(FixtureDisabled(), statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var take = Math.Clamp(limit ?? 50, 1, 100);
     return Results.Json(new { jobs = store.List(take).Select(JobViews.ToSummary).ToList() });
 });
 
 app.MapGet("/api/jobs/{id}", (string id, SqliteJobStore store) =>
 {
+    if (!fixtureEnabled)
+    {
+        return Results.Json(FixtureDisabled(), statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var job = store.Get(id);
     return job is null ? Results.NotFound(new { error = "not_found", message = "任务不存在。" }) : Results.Json(JobViews.ToDetail(job));
 });
 
 app.MapPost("/api/jobs/{id}/cancel", (string id, JobService jobs) =>
 {
+    if (!fixtureEnabled)
+    {
+        return Results.Json(FixtureDisabled(), statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var (status, body) = jobs.Cancel(id);
     return Results.Json(body, statusCode: status);
 });
 
 app.MapGet("/api/jobs/{id}/export.csv", (string id, SqliteJobStore store) =>
 {
+    if (!fixtureEnabled)
+    {
+        return Results.Json(FixtureDisabled(), statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var job = store.Get(id);
     if (job is null)
     {
@@ -549,27 +646,27 @@ static object DevicePayload(DeviceResolution resolution) => new
     features = SimIdentity.Features
 };
 
-static async Task<byte[]?> ReadBodyAsync(HttpRequest request)
+static object FixtureDisabled() => new
 {
-    using var buffer = new MemoryStream();
-    var chunk = new byte[4096];
-    while (true)
+    error = "fixture_disabled",
+    message = "生产模式不能进入或调用内部测试夹具。",
+    executed = false,
+    hardwareAccepted = false,
+    fallbackToFixture = false
+};
+
+static async Task<byte[]?> ReadBodyAsync(HttpRequest request) => await ReadDeclaredAsync(request, RecipeValidator.MaxBytes);
+
+static async Task<byte[]?> ReadDeclaredAsync(HttpRequest request, int maxBytes)
+{
+    if (request.ContentLength is null or <= 0 || request.ContentLength > maxBytes)
     {
-        var read = await request.Body.ReadAsync(chunk);
-        if (read == 0)
-        {
-            break;
-        }
-
-        if (buffer.Length + read > RecipeValidator.MaxBytes)
-        {
-            return null;
-        }
-
-        buffer.Write(chunk, 0, read);
+        return null;
     }
 
-    return buffer.ToArray();
+    var data = new byte[(int)request.ContentLength.Value];
+    await request.Body.ReadExactlyAsync(data);
+    return data;
 }
 
 static string ResolveDatabasePath(IConfiguration configuration, IHostEnvironment environment)

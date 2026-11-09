@@ -26,6 +26,10 @@
 
 `global.json` 要求 10.0 功能带上的最新 SDK。若 `dotnet` 不在 `PATH` 中，先安装 .NET 10 SDK，或把已安装目录加进 `PATH`。
 
+## Windows 用户启动
+
+从本分支 GitHub Actions 的工件 `nfa1000-win-x64` 下载并解压。双击 `NandFlashTester.cmd` 启动，浏览器打开 `http://127.0.0.1:5080/`。双击 `stop.cmd` 停止。版本、完整提交和构建时间在同目录 `build-info.json`，文件哈希在 `SHA256SUMS.txt`，说明在 `START.txt`。不需要安装 .NET 或 Node。这个发布没有在用户电脑上安装或运行，也没有写入 `D:\NandFlashTester`。
+
 ## 启动
 
 在仓库根目录：

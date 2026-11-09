@@ -47,6 +47,16 @@ export interface ScriptDocument {
   hardwareExecuted: boolean;
 }
 
+export interface LotView {
+  lotId: string;
+  status: string;
+  configVersion: number;
+  configSha256: string;
+  devicePermissionGranted: boolean;
+  gradesAssigned: boolean;
+  attempts: { attemptId: string; label: string; attemptIndex: number; status: string; socketChangeRequired: boolean; grade: string | null; gradesAssigned: boolean; uncovered: { code: string }[] }[];
+}
+
 export interface ScriptLog {
   logId: number;
   kind: string;
@@ -163,6 +173,18 @@ export const api = {
       read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; plan: ScriptPlanView; logs: ScriptLog[]; script: ScriptDocument }>(response)
     ),
   snapshots: () => fetch("/api/run-snapshots").then((response) => read<{ hardwareRecovery: boolean; snapshots: { snapshotId: string; scriptId: string; status: string; errorClass: string; bytesEmitted: number; hardwareRecovery: boolean; patternShas: string; reason: string }[] }>(response)),
+  about: () => fetch("/api/about").then((response) => read<{ version: string; commit: string; buildTimeUtc: string; runtimeMode: string; packagedMode: string; uiMatchesApi: boolean; fallbackToFixture: boolean }>(response)),
+  configCreate: (body: { name: string; retestLimit: number; temperatureCandidate: string; rawEnabled: boolean; rawQuotaBytes: number }) =>
+    fetch("/api/sku-configs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((response) => read<{ configId: string; version: number; sha256: string; devicePermissionGranted: boolean }>(response)),
+  configLock: (configId: string, version: number) =>
+    fetch(`/api/sku-configs/${configId}/lock?version=${version}`, { method: "POST" }).then((response) => read<{ configId: string; version: number; status: string; sha256: string }>(response)),
+  lotOpen: (body: { configId: string; version: number; industrialPlanned: number; totalPlanned: number }) =>
+    fetch("/api/lots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((response) => read<LotView>(response)),
+  lotRecord: (lotId: string, label: string) =>
+    fetch(`/api/lots/${lotId}/units`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) }).then((response) => read<LotView>(response)),
+  lotRetest: (lotId: string, label: string) =>
+    fetch(`/api/lots/${lotId}/units/${encodeURIComponent(label)}/retest`, { method: "POST" }).then((response) => read<LotView>(response)),
+  lotClose: (lotId: string) => fetch(`/api/lots/${lotId}/close`, { method: "POST" }).then((response) => read<LotView>(response)),
   scriptStop: (scriptId: string) =>
     fetch(`/api/scripts/${scriptId}/stop`, { method: "POST" }).then((response) =>
       read<{ executed: boolean; hardwareExecuted: boolean; bytesEmitted: number; script: ScriptDocument; logs: ScriptLog[] }>(response)

@@ -12,6 +12,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.1.0</Version>
     <AssemblyTitle>领存NFA1000闪存测试仪</AssemblyTitle>
     <Product>领存NFA1000闪存测试仪</Product>
     <Description>领存NFA1000闪存测试仪</Description>
@@ -24,13 +25,25 @@
   <ItemGroup>
     <Content Include="..\..\scripts\windows\NandFlashTester.cmd" Link="NandFlashTester.cmd" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\scripts\windows\stop.ps1" Link="stop.ps1" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\scripts\windows\stop.cmd" Link="stop.cmd" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\scripts\windows\START.txt" Link="START.txt" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target Name="EnsureBuildInfo" BeforeTargets="BeforeBuild">
+    <Exec Condition="('$(NAND_BUILD_INFO_LOCK)' != '1' Or !Exists('$(MSBuildProjectDirectory)\build-info.json')) And !$([MSBuild]::IsOSPlatform('Windows'))" Command="bash &quot;$(MSBuildProjectDirectory)/../../scripts/write-build-info.sh&quot; &quot;$(Version)&quot;" />
+    <Exec Condition="('$(NAND_BUILD_INFO_LOCK)' != '1' Or !Exists('$(MSBuildProjectDirectory)\build-info.json')) And $([MSBuild]::IsOSPlatform('Windows'))" Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\write-build-info.ps1&quot; -Version &quot;$(Version)&quot;" />
+  </Target>
+
+  <Target Name="CopyBuildInfo" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\build-info.json" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\build-info.json')" />
+  </Target>
 
   <Target Name="CopyFrontendToPublish" AfterTargets="Publish">
     <ItemGroup>
       <FrontendDist Include="$(MSBuildProjectDirectory)\..\..\web\dist\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendDist)" DestinationFiles="@(FrontendDist->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\..\web\dist\index.html')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\build-info.json" DestinationFolder="$(PublishDir)" Condition="Exists('$(MSBuildProjectDirectory)\build-info.json')" />
   </Target>
 
 </Project>
