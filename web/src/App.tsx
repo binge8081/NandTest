@@ -148,8 +148,8 @@ function ProductEntry() {
           <h1>领存NFA1000闪存测试仪</h1>
         </div>
         <p className="runtime">{framework || ".NET"} · 本机上位机</p>
-        <p className="fine">版本 {about?.version ?? "…"} · 提交 {about?.commit ?? "…"} · 构建 {about?.buildTimeUtc ?? "…"} · 模式 {about?.runtimeMode ?? "…"}{about?.uiMatchesApi ? " · 页面与接口提交一致" : ""}</p>
       </header>
+      <p className="fine">版本 {about?.version ?? "…"} · 提交 {about?.commit ?? "…"} · 构建 {about?.buildTimeUtc ?? "…"} · 模式 {about?.runtimeMode ?? "…"}{about?.uiMatchesApi ? " · 页面与接口提交一致" : ""}</p>
       <div className="banner" role="status">未连接。依赖实机的执行已禁用，不会改用其他介质。</div>
 
       <div className="layout">
