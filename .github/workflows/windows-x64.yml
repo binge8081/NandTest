@@ -1,0 +1,50 @@
+name: windows-x64
+
+on:
+  pull_request:
+  push:
+    branches:
+      - cursor/nand-sim-closed-loop-0434
+
+jobs:
+  win-x64:
+    runs-on: windows-latest
+    env:
+      NAND_BUILD_INFO_LOCK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Stamp build identity
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/write-build-info.ps1 -Version 0.1.0
+      - name: Test on Windows
+        run: dotnet test NandFlashTester.slnx -c Release
+      - name: Build frontend
+        run: npm ci
+        working-directory: web
+      - name: Compile frontend
+        run: npm run build
+        working-directory: web
+      - name: Publish self-contained win-x64
+        run: dotnet publish src/NandFlashTester.Api/NandFlashTester.Api.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+      - name: Hash manifest and reject confidential files
+        run: |
+          $root = Resolve-Path publish/win-x64
+          $banned = Get-ChildItem $root -Recurse -File | Where-Object { $_.Extension -in ".zip",".pdf",".class" }
+          if ($banned) { $banned | ForEach-Object { Write-Error $_.FullName }; exit 1 }
+          $files = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+            $rel = $file.FullName.Substring($root.Path.Length + 1).Replace("\", "/")
+            "$hash  $rel"
+          }
+          [System.IO.File]::WriteAllText((Join-Path $root "SHA256SUMS.txt"), (($lines | Sort-Object) -join "`n") + "`n")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nfa1000-win-x64
+          path: publish/win-x64
+          if-no-files-found: error

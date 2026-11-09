@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NandFlashTester.Api/NandFlashTester.Api.csproj" />
+    <Project Path="src/NandFlashTester.Core/NandFlashTester.Core.csproj" />
+    <Project Path="src/NandFlashTester.Tests/NandFlashTester.Tests.csproj" />
+  </Folder>
+</Solution>

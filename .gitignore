@@ -1,0 +1,17 @@
+bin/
+obj/
+node_modules/
+dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+.vs/
+artifacts/
+publish/
+reference-private/
+confidential/
+*.user
+.DS_Store
+src/NandFlashTester.Api/build-info.json
+web/public/build-info.json
