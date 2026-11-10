@@ -57,6 +57,51 @@ export interface LotView {
   attempts: { attemptId: string; label: string; attemptIndex: number; status: string; socketChangeRequired: boolean; grade: string | null; gradesAssigned: boolean; uncovered: { code: string }[] }[];
 }
 
+export interface CaptureInput {
+  label: string;
+  id00?: string;
+  id20?: string;
+  id40?: string;
+  uniqueId?: string;
+  parameterPage?: string;
+}
+
+export interface SourcedField {
+  key: string;
+  label: string;
+  value: string | null;
+  source: string | null;
+  missing: boolean;
+  pendingReason: string | null;
+}
+
+export interface IdentificationReport {
+  state: string;
+  summary: string;
+  partNumber: string | null;
+  datasheetRevision: string | null;
+  cardId: string | null;
+  fields: SourcedField[];
+  missingFields: string[];
+  conflicts: string[];
+  pending: { field: string; reason: string }[];
+  captures: { label: string; id00Hex: string | null; id20Hex: string | null; id40Hex: string | null; uniqueIdHex: string | null; parameterPageBytes: number | null; state: string }[];
+  consistency: string;
+  hardwareExecuted: boolean;
+}
+
+export interface IdentificationOverview {
+  connected: boolean;
+  connectionReason: string;
+  skuDirectory: string;
+  skuErrors: string[];
+  cards: { cardId: string; vendor: string | null; revision: string | null; blocksAutoMatch: boolean; pending: { field: string; reason: string }[]; conflicts: { topic: string; detail: string }[] }[];
+  dutMap: { path: string; source: string; errors: string[]; targets: { id: string; label: string }[] };
+  wireGaps: { id: string; detail: string }[];
+  report: IdentificationReport | null;
+  chip: { fields: { key: string; label: string; value: string | null; source: string | null; manual: boolean; missing: boolean }[] };
+}
+
 export interface ScriptLog {
   logId: number;
   kind: string;
@@ -193,5 +238,26 @@ export const api = {
   jobs: () => fetch("/api/jobs").then((response) => read<{ jobs: JobSummary[] }>(response)),
   job: (jobId: string) => fetch(`/api/jobs/${jobId}`).then((response) => read<JobDetail>(response)),
   cancel: (jobId: string) =>
-    fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" }).then((response) => read<JobDetail>(response))
+    fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" }).then((response) => read<JobDetail>(response)),
+  identification: () => fetch("/api/identification").then((response) => read<IdentificationOverview>(response)),
+  identificationSamples: () => fetch("/api/identification/samples").then((response) => read<{ identified: CaptureInput; partial: CaptureInput; unrecognized: CaptureInput }>(response)),
+  decodeIdentification: (captures: CaptureInput[]) =>
+    fetch("/api/identification/decode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captures })
+    }).then((response) => read<{ report: IdentificationReport }>(response)),
+  runIdentification: (body: { cardId: string | null; targets: string[] }) =>
+    fetch("/api/identification/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then((response) => read<{ message: string; sent: boolean; wireBytesEmitted: number; code: string }>(response)),
+  confirmChip: () => fetch("/api/identification/chip/confirm", { method: "POST" }).then((response) => read<{ confirmed: boolean }>(response)),
+  overrideChip: (key: string, value: string) =>
+    fetch("/api/identification/chip/override", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value })
+    }).then((response) => read<{ chip: IdentificationOverview["chip"] }>(response))
 };

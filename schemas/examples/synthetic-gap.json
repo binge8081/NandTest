@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "1",
+  "cardId": "syn-gap",
+  "vendor": null,
+  "vendorLegalNameKnown": false,
+  "family": "SYN-GAP",
+  "datasheet": {
+    "title": "Synthetic card with unpublished fields",
+    "revision": null,
+    "date": null,
+    "status": "synthetic",
+    "pageNote": null
+  },
+  "parts": [
+    {
+      "partNumber": null,
+      "partNumberKnown": false,
+      "notes": "没有完整的 00h 期望字节。",
+      "id00Hex": null,
+      "modelNames": []
+    }
+  ],
+  "manufacturerIdHex": "54",
+  "interfaceClaim": {
+    "standard": null,
+    "version": null,
+    "dataInterfaces": [],
+    "conflicts": []
+  },
+  "cellType": null,
+  "commands": {
+    "reset": { "requiredFirst": null, "opcodes": ["FF"], "tPorMaxMs": null },
+    "readId": {
+      "addresses": [
+        { "address": "00", "supported": true, "lengthBytes": null, "lengthUncertain": true, "expectedHex": null, "signature": null },
+        { "address": "20", "supported": null, "lengthBytes": null, "lengthUncertain": true, "expectedHex": null, "signature": null },
+        { "address": "40", "supported": null, "lengthBytes": null, "lengthUncertain": true, "expectedHex": null, "signature": null }
+      ]
+    },
+    "uniqueId": { "supported": null, "opcode": null, "address": "00", "layout": "card", "copies": null, "copyBytes": null, "uidBytes": null },
+    "parameterPage": {
+      "supported": null,
+      "opcode": "EC",
+      "addresses": [],
+      "layout": "unknown",
+      "copyLength": null,
+      "minCopies": null,
+      "crc": { "mode": "none" },
+      "acceptIdenticalCopiesWithoutCrc": false,
+      "statusProcedure": null,
+      "statusPollCapUs": null
+    }
+  },
+  "timings": {
+    "phases": [
+      { "name": "default", "tWhrMinNs": null, "tWhrtMinNs": null, "tRrMinNs": null, "tAdlMinNs": null, "tRstReadUs": null, "tPorMaxMs": null }
+    ],
+    "parameterPageBusy": "pending",
+    "parameterPageBusyNote": "参数页忙时间未给出。"
+  },
+  "geometry": {
+    "source": "unknown",
+    "pageDataBytes": null,
+    "spareBytes": null,
+    "spareConflicts": [],
+    "pagesPerBlock": null,
+    "blocksPerLun": null,
+    "lunsPerCe": null,
+    "bitsPerCell": null,
+    "eccBits": null,
+    "eccCodewordBytes": null,
+    "planes": null,
+    "pageNote": null
+  },
+  "idBitFields": [
+    {
+      "address": "00",
+      "byteIndex": 2,
+      "mask": 3,
+      "shift": 0,
+      "field": "lunsPerCe",
+      "incomplete": true,
+      "note": "分位表不完整，只保留字段，不解码。",
+      "maps": []
+    }
+  ],
+  "timingModeFields": [],
+  "conflicts": [],
+  "pending": [
+    { "field": "partNumber", "reason": "料号未给出。" },
+    { "field": "id00", "reason": "00h 完整期望字节未给出。" },
+    { "field": "parameterPage", "reason": "参数页取值未给出。" },
+    { "field": "crc", "reason": "CRC 多项式未给出。" },
+    { "field": "tWHR", "reason": "tWHR 未给出。" },
+    { "field": "tRR", "reason": "tRR 未给出。" },
+    { "field": "tADL", "reason": "tADL 未给出。" },
+    { "field": "uniqueId", "reason": "Unique ID 命令未说明。" },
+    { "field": "interface", "reason": "接口版本未给出。" }
+  ],
+  "electrical": { "vcc": null, "vccq": null, "note": null },
+  "temperature": { "rangeText": null, "note": null }
+}

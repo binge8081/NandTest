@@ -140,3 +140,51 @@ footer ul { padding-left: 18px; }
 @media (max-width: 640px) {
   .layout, .form-grid, dl, .summary { grid-template-columns: 1fr; }
 }
+
+.app-shell { min-height: 100vh; background: #f3f6f8; color: #203345; }
+.app-header {
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #d8e2ea;
+}
+.brand { display: flex; align-items: center; gap: 18px; }
+.brand strong { display: block; font-size: 18px; font-weight: 650; }
+.brand small { color: #596d7f; letter-spacing: 0.08em; }
+.header-pills { display: flex; gap: 8px; }
+.app-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 70px); }
+.app-nav { background: #143349; color: #d9e7ef; padding: 18px 12px; }
+.app-nav .navtitle { margin: 0 12px 10px; color: #a0bdcd; font-size: 12px; letter-spacing: 0.08em; }
+.app-nav .navgroup { background: transparent; border: 0; padding: 0; margin: 0 0 8px; }
+.app-nav .navgroup summary { color: #b9d0dc; cursor: pointer; padding: 6px 10px; }
+.app-nav button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #e4eef3;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.app-nav button.active { background: #26566b; color: #fff; }
+.app-body > main { padding: 22px 28px 64px; }
+.app-body .page { max-width: none; margin: 0; padding: 0; }
+.page-head { margin-bottom: 14px; }
+.eyebrow { margin: 0 0 4px; color: #007d78; letter-spacing: 0.08em; font-size: 12px; }
+.readid h1, .page-head h1 { font-size: 28px; }
+button.primary { background: #007d78; border-color: #007d78; }
+.pill.good { background: #e0f2e9; color: #12655e; border-color: #b7dfc4; }
+.pill.bad { background: #ffefee; color: #8d2d2a; border-color: #efc7c1; }
+.lun-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.check { display: flex; align-items: center; gap: 6px; color: inherit; font-size: 14px; }
+.readid textarea { min-height: 72px; }
+@media (max-width: 800px) {
+  .app-body { grid-template-columns: 1fr; }
+  .app-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  .app-nav .navtitle, .app-nav .navgroup summary { display: none; }
+  .app-nav button { width: auto; }
+}

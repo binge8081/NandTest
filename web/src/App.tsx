@@ -2,16 +2,56 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import type { ScopeItem } from "./types";
 import type { LotView, MaterialView, ScriptDiagnostic, ScriptDocument, ScriptLog, ScriptPlanView } from "./api";
+import { ChipPage, ReadIdPage } from "./ReadIdPage";
+
+type PageId = "readid" | "chip" | "config" | "script";
+
+export function App() {
+  const [page, setPage] = useState<PageId>("readid");
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="brand">
+          <img src="/lingcun-logo.png" width={170} height={30} alt="STORLEAD" />
+          <div>
+            <strong>领存NFA1000闪存测试仪</strong>
+            <small>闪存测试工作台</small>
+          </div>
+        </div>
+        <div className="header-pills">
+          <span className="pill warn">未连接</span>
+          <span className="pill">工程师模式</span>
+        </div>
+      </header>
+      <div className="app-body">
+        <aside className="app-nav">
+          <p className="navtitle">从芯片到结果</p>
+          <details className="navgroup" open>
+            <summary>当前芯片</summary>
+            <button type="button" className={page === "chip" ? "active" : ""} onClick={() => setPage("chip")}>芯片定义</button>
+            <button type="button" className={page === "readid" ? "active" : ""} onClick={() => setPage("readid")}>读 ID 识别</button>
+          </details>
+          <button type="button" className={page === "config" ? "active" : ""} onClick={() => setPage("config")}>配置</button>
+          <button type="button" className={page === "script" ? "active" : ""} onClick={() => setPage("script")}>自定义脚本</button>
+        </aside>
+        <main>
+          <div className="banner" role="status">未连接。依赖实机的执行已禁用，不会改用其他介质。</div>
+          {page === "readid" && <ReadIdPage onOpenChip={() => setPage("chip")} />}
+          {page === "chip" && <ChipPage />}
+          <div hidden={page !== "config" && page !== "script"}>
+            <ProductEntry focus={page === "script" ? "script" : "config"} />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
 
 function configurationScript(name: string, seed: number, block: number, pages: number): string {
   return `name ${name}\nseed ${seed}\nvar block = ${block}\nvar pages = ${pages}\nerase block\nloop pages\n  program block i\n  read block i\n  compare block i\nend\n`;
 }
 
-export function App() {
-  return <ProductEntry />;
-}
-
-function ProductEntry() {
+function ProductEntry(props: { focus: "config" | "script" }) {
   const [framework, setFramework] = useState("");
   const [scope, setScope] = useState<ScopeItem[]>([]);
   const [configName, setConfigName] = useState("页编程比较");
@@ -140,20 +180,13 @@ function ProductEntry() {
     await refreshList();
   }
 
+  const showConfig = props.focus === "config";
   return (
     <div className="page">
-      <header className="top">
-        <div>
-          <img className="brand-logo" src="/lingcun-logo.png" width={170} height={30} alt="STORLEAD" />
-          <h1>领存NFA1000闪存测试仪</h1>
-        </div>
-        <p className="runtime">{framework || ".NET"} · 本机上位机</p>
-      </header>
-      <p className="fine">版本 {about?.version ?? "…"} · 提交 {about?.commit ?? "…"} · 构建 {about?.buildTimeUtc ?? "…"} · 模式 {about?.runtimeMode ?? "…"}{about?.uiMatchesApi ? " · 页面与接口提交一致" : ""}</p>
-      <div className="banner" role="status">未连接。依赖实机的执行已禁用，不会改用其他介质。</div>
+      <p className="fine">{framework || ".NET"} · 版本 {about?.version ?? "…"} · 提交 {about?.commit ?? "…"} · 构建 {about?.buildTimeUtc ?? "…"} · 模式 {about?.runtimeMode ?? "…"}{about?.uiMatchesApi ? " · 页面与接口提交一致" : ""}</p>
 
       <div className="layout">
-        <aside className="panel device">
+        {showConfig && <aside className="panel device">
           <h2>发现与连接</h2>
           <span className="pill warn">未连接</span>
           <dl>
@@ -163,10 +196,10 @@ function ProductEntry() {
           </dl>
           <p className="fine">{discoveryReason}</p>
           <button type="button" disabled>连接</button>
-        </aside>
+        </aside>}
 
         <main>
-          <section className="panel" id="device-params">
+          {showConfig && <section className="panel" id="device-params">
             <h2>器件参数</h2>
             <p className="fine">{materials?.reason ?? "正在读取参数状态。"}</p>
             <p className="fine">{materials?.temperatureTemplates?.reason ?? "三温只是未核实候选。未经 SKU 规格核实，不允许实机。"}</p>
@@ -178,9 +211,9 @@ function ProductEntry() {
               <dt>量产验收上限</dt><dd>{materials?.rate?.capApplies && materials.rate.massProductionCapMtPerS != null ? `${materials.rate.massProductionCapMtPerS} MT/s` : "未适用"}</dd>
               <dt>实际覆盖</dt><dd>{materials?.rate?.actualCoveredMtPerS ?? "未测"}</dd>
             </dl>
-          </section>
+          </section>}
 
-          <section className="panel" id="simple-run">
+          {showConfig && <section className="panel" id="simple-run">
             <h2>配置</h2>
             <p className="fine">这里填写名称、种子、块和循环页数。写入后生成有界的擦写读比较脚本。没有连接的设备时不能执行。</p>
             <div className="form-grid">
@@ -196,11 +229,11 @@ function ProductEntry() {
               <button type="button" className="primary" disabled>执行</button>
             </div>
             <p className="fine">执行已禁用：{discoveryReason} 未经 SKU 规格核实，不允许实机。</p>
-          </section>
+          </section>}
 
-          <LotPanel />
+          {showConfig && <LotPanel />}
 
-          <section className="panel" id="expert-recipe">
+          {!showConfig && <section className="panel" id="expert-recipe">
             <div className="section-head">
               <h2>自定义脚本</h2>
               <span className="pill">主机计划</span>
@@ -255,16 +288,16 @@ function ProductEntry() {
                 {scriptMap.map((item) => <li key={item.name}><strong>{item.name}</strong> · {item.status} · {item.gap}</li>)}
               </ul>
             </details>
-          </section>
+          </section>}
 
-          <section className="panel" id="job-result">
+          {!showConfig && <section className="panel" id="job-result">
             <h2>结果</h2>
             <p>未连接。没有实测指标。</p>
-          </section>
+          </section>}
         </main>
       </div>
 
-      <section className="panel history">
+      {!showConfig && <section className="panel history">
         <h2>运行快照</h2>
         <p className="fine">这些是主机计划快照。发送字节为 0。主机中断不是硬件断点续传，也没有实测指标。</p>
         {snapshots.length === 0 && <p>还没有运行快照。</p>}
@@ -285,9 +318,9 @@ function ProductEntry() {
             </tbody>
           </table>
         )}
-      </section>
+      </section>}
 
-      <footer>
+      {showConfig && <footer>
         <p>下面 {remaining.length} 项尚未实现，不能当作通过。</p>
         <details>
           <summary>查看尚未实现的项目</summary>
@@ -298,7 +331,7 @@ function ProductEntry() {
           </ul>
         </details>
         <p className="fine">内部测试不从本页进入，生产模式也不能调用它。</p>
-      </footer>
+      </footer>}
     </div>
   );
 }
