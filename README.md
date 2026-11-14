@@ -50,6 +50,16 @@ SQLite 默认在 `src/NandFlashTester.Api/data/nand-sim.db`。可以用环境变
 DatabasePath=/绝对路径/nand-sim.db dotnet run --project src/NandFlashTester.Api
 ```
 
+## 读 ID 识别
+
+当前芯片里的「读 ID 识别」对选中的 LUN 编排复位（FFh）、Read ID（90h，地址 00h / 20h / 40h 以参数卡是否支持为准）、Read Unique ID 和 Read Parameter Page。时序只使用参数卡里写下的 tWHR、tRR、tADL、tPOR。没写的等待不会补一个数，这一步不发送。
+
+参数卡是用户放在本机的 JSON，默认目录是 `%ProgramData%\NFA1000\sku-cards`。开发时可以用环境变量 `NFA1000_SKU_DIR` 指到别的目录。结构见 `schemas/sku-card.schema.json`。`schemas/examples` 里只有合成卡，用来核对解码，不是器件。DUT 的 Lane、通道、CE、LUN 来自 `NFA1000_DUT_MAP` 指向的文件，结构见 `schemas/dut-map.schema.json`。没有这份文件时，软件不从设备寄存器猜测拓扑。
+
+ONFI 参数页使用公开规范的 CRC-16：多项式 0x8005，初值 0x4F4E，不反转，最终不异或（ONFI 4.2 / 5.0，https://onfi.org/）。JEDEC 参数页只有在参数卡自己给出 CRC，或参数卡允许采用逐字节一致的冗余副本时，才填写几何。对不上的字段留空，并标出来源或待补参数。
+
+传输层按控制契约收逻辑周期，但不生成线上字节。control-1 没有 Read ID 操作；软硬件初稿里的帧和微指令仍是建议值。未连接时读取按钮会说明原因。导入十六进制可以在没有设备时解码。
+
 ## 这一页怎么用
 
 正式入口是未连接的实机页面。没有设备时显示未连接，执行保持禁用，不会改用测试夹具。

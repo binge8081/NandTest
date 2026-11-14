@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\schemas\**\*.json" Link="schemas\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\scripts\windows\NandFlashTester.cmd" Link="NandFlashTester.cmd" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\scripts\windows\stop.ps1" Link="stop.ps1" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\scripts\windows\stop.cmd" Link="stop.cmd" CopyToPublishDirectory="PreserveNewest" />

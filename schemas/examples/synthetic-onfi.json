@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "1",
+  "cardId": "syn-onfi-demo",
+  "vendor": "SYNTHETIC",
+  "vendorLegalNameKnown": true,
+  "family": "SYN-ONFI",
+  "datasheet": {
+    "title": "Synthetic ONFI identification example",
+    "revision": "SYN-1.0",
+    "date": null,
+    "status": "synthetic",
+    "pageNote": null
+  },
+  "parts": [
+    {
+      "partNumber": "SYN-ONFI-DEMO",
+      "partNumberKnown": true,
+      "notes": "合成料号，不是器件。",
+      "id00Hex": "53 A1 01 10 00 00 00 00",
+      "modelNames": ["SYN-ONFI-DEMO"]
+    }
+  ],
+  "manufacturerIdHex": "53",
+  "interfaceClaim": {
+    "standard": "ONFI",
+    "version": "4.0",
+    "dataInterfaces": ["NV-DDR3"],
+    "conflicts": []
+  },
+  "cellType": "3",
+  "commands": {
+    "reset": { "requiredFirst": true, "opcodes": ["FF"], "tPorMaxMs": 42 },
+    "readId": {
+      "addresses": [
+        { "address": "00", "supported": true, "lengthBytes": 8, "lengthUncertain": false, "expectedHex": null, "signature": null },
+        { "address": "20", "supported": true, "lengthBytes": 6, "lengthUncertain": false, "expectedHex": "4F 4E 46 49 01 00", "signature": "ONFI" },
+        { "address": "40", "supported": true, "lengthBytes": 6, "lengthUncertain": false, "expectedHex": "4A 45 44 45 43 00", "signature": "JEDEC" }
+      ]
+    },
+    "uniqueId": { "supported": true, "opcode": "ED", "address": "00", "layout": "onfi-public", "copies": null, "copyBytes": null, "uidBytes": null },
+    "parameterPage": {
+      "supported": true,
+      "opcode": "EC",
+      "addresses": ["00"],
+      "layout": "onfi-public",
+      "copyLength": null,
+      "minCopies": null,
+      "crc": { "mode": "onfi-public", "polynomial": null, "init": null, "reflectIn": false, "reflectOut": false, "xorOut": 0, "coverageStart": null, "coverageEndExclusive": null, "storedOffset": null, "citation": null },
+      "acceptIdenticalCopiesWithoutCrc": false,
+      "statusProcedure": "poll-70h-then-00h",
+      "statusPollCapUs": 250000
+    }
+  },
+  "timings": {
+    "phases": [
+      { "name": "default", "tWhrMinNs": 1234, "tWhrtMinNs": null, "tRrMinNs": 567, "tAdlMinNs": 890, "tRstReadUs": null, "tPorMaxMs": 42 }
+    ],
+    "parameterPageBusy": "pending",
+    "parameterPageBusyNote": "合成卡不把阵列读取时间当作参数页忙时间。"
+  },
+  "geometry": {
+    "source": "datasheet-features",
+    "pageDataBytes": 4096,
+    "spareBytes": 256,
+    "spareConflicts": [],
+    "pagesPerBlock": 256,
+    "blocksPerLun": 1024,
+    "lunsPerCe": 1,
+    "bitsPerCell": 3,
+    "eccBits": 8,
+    "eccCodewordBytes": null,
+    "planes": null,
+    "pageNote": null
+  },
+  "idBitFields": [],
+  "timingModeFields": [
+    { "name": "NV-DDR3", "offset": 116, "length": 2 }
+  ],
+  "conflicts": [],
+  "pending": [],
+  "electrical": { "vcc": "1.80 V（合成）", "vccq": "1.20 V（合成）", "note": null },
+  "temperature": { "rangeText": "0–70 ℃（合成）", "note": null }
+}

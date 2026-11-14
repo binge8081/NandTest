@@ -41,12 +41,15 @@ public sealed class TestApp : WebApplicationFactory<Program>
 {
     private readonly IJobPacing _pacing;
 
-    public TestApp(string databasePath, IJobPacing? pacing = null, string platformMode = "AutomatedTest")
+    public TestApp(string databasePath, IJobPacing? pacing = null, string platformMode = "AutomatedTest", IReadOnlyDictionary<string, string?>? settings = null)
     {
         DatabasePath = databasePath;
         PlatformMode = platformMode;
+        Settings = settings;
         _pacing = pacing ?? new NoDelayPacing();
     }
+
+    public IReadOnlyDictionary<string, string?>? Settings { get; }
 
     public string PlatformMode { get; }
 
@@ -57,11 +60,20 @@ public sealed class TestApp : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+            var values = new Dictionary<string, string?>
             {
                 ["DatabasePath"] = DatabasePath,
                 ["Platform:Mode"] = PlatformMode
-            });
+            };
+            if (Settings is not null)
+            {
+                foreach (var pair in Settings)
+                {
+                    values[pair.Key] = pair.Value;
+                }
+            }
+
+            config.AddInMemoryCollection(values);
         });
         builder.ConfigureTestServices(services =>
         {

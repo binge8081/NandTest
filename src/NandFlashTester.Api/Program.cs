@@ -6,6 +6,7 @@ using NandFlashTester.Api.Lots;
 using NandFlashTester.Api.Materials;
 using NandFlashTester.Api.Jobs;
 using NandFlashTester.Api.Platform;
+using NandFlashTester.Api.Identification;
 using NandFlashTester.Api.Scripts;
 using NandFlashTester.Core;
 using NandFlashTester.Core.Devices;
@@ -61,6 +62,7 @@ builder.Services.AddSingleton(sp =>
     var databasePath = ResolveDatabasePath(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>());
     return new SqliteLotStore(databasePath);
 });
+builder.Services.AddSingleton<IdentificationSession>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddSingleton<IJobPacing, NoDelayPacing>();
 builder.Services.AddSingleton<JobService>();
@@ -116,6 +118,8 @@ app.MapGet("/api/about", () => Results.Json(BuildInfo.Create(
     app.Environment.ContentRootPath,
     webRoot,
     fixtureEnabled ? PlatformModes.AutomatedTest : PlatformModes.Production)));
+
+IdentificationRoutes.Map(app);
 
 app.MapGet("/api/discovery", () => Results.Json(new
 {

@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nfa1000.local/schemas/sku-card.schema.json",
+  "title": "NFA1000 SKU parameter card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "cardId", "vendorLegalNameKnown", "datasheet", "parts", "commands", "timings", "geometry", "pending"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "cardId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
+    "vendor": { "type": ["string", "null"] },
+    "vendorLegalNameKnown": { "type": "boolean" },
+    "family": { "type": ["string", "null"] },
+    "datasheet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision"],
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "revision": { "type": ["string", "null"] },
+        "date": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "pageNote": { "type": ["string", "null"] }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["partNumberKnown"],
+        "properties": {
+          "partNumber": { "type": ["string", "null"] },
+          "partNumberKnown": { "type": "boolean" },
+          "notes": { "type": ["string", "null"] },
+          "id00Hex": { "type": ["string", "null"] },
+          "modelNames": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "manufacturerIdHex": { "type": ["string", "null"] },
+    "interfaceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "standard": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "dataInterfaces": { "type": "array", "items": { "type": "string" } },
+        "conflicts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "cellType": { "type": ["string", "null"] },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reset": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requiredFirst": { "type": ["boolean", "null"] },
+            "opcodes": { "type": "array", "items": { "type": "string" } },
+            "tPorMaxMs": { "type": ["integer", "null"] }
+          }
+        },
+        "readId": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "addresses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["address"],
+                "properties": {
+                  "address": { "enum": ["00", "20", "40"] },
+                  "supported": { "type": ["boolean", "null"] },
+                  "lengthBytes": { "type": ["integer", "null"] },
+                  "lengthUncertain": { "type": "boolean" },
+                  "expectedHex": { "type": ["string", "null"] },
+                  "signature": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "uniqueId": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "supported": { "type": ["boolean", "null"] },
+            "opcode": { "type": ["string", "null"] },
+            "address": { "type": ["string", "null"] },
+            "layout": { "enum": ["onfi-public", "card"] },
+            "copies": { "type": ["integer", "null"] },
+            "copyBytes": { "type": ["integer", "null"] },
+            "uidBytes": { "type": ["integer", "null"] }
+          }
+        },
+        "parameterPage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "supported": { "type": ["boolean", "null"] },
+            "opcode": { "type": ["string", "null"] },
+            "addresses": { "type": "array", "items": { "type": "string" } },
+            "layout": { "enum": ["onfi-public", "jedec-public", "unknown", "none"] },
+            "copyLength": { "type": ["integer", "null"] },
+            "minCopies": { "type": ["integer", "null"] },
+            "crc": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": { "enum": ["none", "onfi-public", "card"] },
+                "polynomial": { "type": ["integer", "null"] },
+                "init": { "type": ["integer", "null"] },
+                "reflectIn": { "type": "boolean" },
+                "reflectOut": { "type": "boolean" },
+                "xorOut": { "type": ["integer", "null"] },
+                "coverageStart": { "type": ["integer", "null"] },
+                "coverageEndExclusive": { "type": ["integer", "null"] },
+                "storedOffset": { "type": ["integer", "null"] },
+                "citation": { "type": ["string", "null"] }
+              }
+            },
+            "acceptIdenticalCopiesWithoutCrc": { "type": "boolean" },
+            "statusProcedure": { "type": ["string", "null"] },
+            "statusPollCapUs": { "type": ["integer", "null"] }
+          }
+        }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "enum": ["default", "pre-init", "post-init"] },
+              "tWhrMinNs": { "type": ["integer", "null"] },
+              "tWhrtMinNs": { "type": ["integer", "null"] },
+              "tRrMinNs": { "type": ["integer", "null"] },
+              "tAdlMinNs": { "type": ["integer", "null"] },
+              "tRstReadUs": { "type": ["integer", "null"] },
+              "tPorMaxMs": { "type": ["integer", "null"] }
+            }
+          }
+        },
+        "parameterPageBusy": { "type": ["string", "null"] },
+        "parameterPageBusyNote": { "type": ["string", "null"] }
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "enum": ["datasheet-features", "parameter-page", "unknown"] },
+        "pageDataBytes": { "type": ["integer", "null"] },
+        "spareBytes": { "type": ["integer", "null"] },
+        "spareConflicts": { "type": "array", "items": { "type": "integer" } },
+        "pagesPerBlock": { "type": ["integer", "null"] },
+        "blocksPerLun": { "type": ["integer", "null"] },
+        "lunsPerCe": { "type": ["integer", "null"] },
+        "bitsPerCell": { "type": ["integer", "null"] },
+        "eccBits": { "type": ["integer", "null"] },
+        "eccCodewordBytes": { "type": ["integer", "null"] },
+        "planes": { "type": ["integer", "null"] },
+        "pageNote": { "type": ["string", "null"] }
+      }
+    },
+    "idBitFields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["address", "byteIndex", "mask", "shift", "field"],
+        "properties": {
+          "address": { "enum": ["00", "20", "40"] },
+          "byteIndex": { "type": "integer", "minimum": 0 },
+          "mask": { "type": "integer", "minimum": 1, "maximum": 255 },
+          "shift": { "type": "integer", "minimum": 0, "maximum": 7 },
+          "field": { "type": "string" },
+          "incomplete": { "type": "boolean" },
+          "note": { "type": ["string", "null"] },
+          "maps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value"],
+              "properties": {
+                "value": { "type": "integer" },
+                "text": { "type": ["string", "null"] },
+                "number": { "type": ["integer", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "timingModeFields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "offset", "length"],
+        "properties": {
+          "name": { "type": "string" },
+          "offset": { "type": "integer", "minimum": 0 },
+          "length": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "detail"],
+        "properties": {
+          "topic": { "type": "string" },
+          "detail": { "type": "string" },
+          "blocksAutoMatch": { "type": "boolean" }
+        }
+      }
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reason"],
+        "properties": {
+          "field": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "electrical": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vcc": { "type": ["string", "null"] },
+        "vccq": { "type": ["string", "null"] },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "temperature": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rangeText": { "type": ["string", "null"] },
+        "note": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
