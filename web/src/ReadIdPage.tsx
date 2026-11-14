@@ -74,10 +74,12 @@ export function ReadIdPage(props: { onOpenChip: () => void }) {
         <div>
           <p className="eyebrow">当前芯片</p>
           <h1>读 ID 识别</h1>
-          <p className="fine">对选中的 LUN 做复位、Read ID、Unique ID 和参数页。没有设备时不发送。导入的十六进制只在本机解码。</p>
+          <p className="fine">左侧填写和读取，右侧预览解码结果。没有设备时不发送。导入的十六进制只在本机解码。</p>
         </div>
       </div>
 
+      <div className="readid-split">
+      <div className="readid-work">
       <section className="panel">
         <h2>已载入参数卡</h2>
         <p className="fine">目录 {overview?.skuDirectory ?? "…"}。参数卡由用户放在本机，不随程序发布厂商字节。</p>
@@ -153,53 +155,74 @@ export function ReadIdPage(props: { onOpenChip: () => void }) {
         </div>
         {error && <p className="error">{error}</p>}
       </section>
+      </div>
 
-      {report && (
-        <section className="panel" id="read-result">
-          <div className="section-head">
-            <h2>识别结果</h2>
-            <span className={`pill ${stateClass}`}>{report.state}</span>
+      <aside className="panel readid-preview" id="read-result" aria-label="预览">
+        <div className="section-head">
+          <h2>预览</h2>
+          <span className={`pill ${report ? stateClass : "warn"}`}>{report?.state ?? "尚未解码"}</span>
+        </div>
+        {!report && (
+          <div>
+            <p>解码或读取之后，识别结果出现在这里。没有读到的字段保持空白。</p>
+            <p className="fine">{overview?.connectionReason}</p>
+            {(overview?.cards ?? []).flatMap((card) => card.pending.map((item) => (
+              <p key={`${card.cardId}-${item.field}`}><span className="pill warn">待补参数</span> {card.cardId} · {item.field}</p>
+            )))}
           </div>
-          <p>{report.summary}</p>
-          <p className="fine">{report.consistency} 硬件未执行。</p>
-          {report.conflicts.length > 0 && <ul className="errors">{report.conflicts.map((item) => <li key={item}>{item}</li>)}</ul>}
-          {report.missingFields.length > 0 && (
-            <div>
-              <h3>缺失字段</h3>
-              <ul>{report.missingFields.map((item) => <li key={item}>{item}</li>)}</ul>
+        )}
+        {report && (
+          <div>
+            <p>{report.summary}</p>
+            <p className="fine">{report.consistency} 硬件未执行。</p>
+            {report.conflicts.length > 0 && <ul className="errors">{report.conflicts.map((item) => <li key={item}>{item}</li>)}</ul>}
+            {report.missingFields.length > 0 && (
+              <div>
+                <h3>缺失字段</h3>
+                <ul>{report.missingFields.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+            )}
+            <table>
+              <caption>解码字段</caption>
+              <thead><tr><th>字段</th><th>值</th><th>来源</th></tr></thead>
+              <tbody>
+                {report.fields.map((field) => (
+                  <tr key={field.key}>
+                    <td>{field.label}</td>
+                    <td>{field.missing ? "—" : field.value}</td>
+                    <td>{field.source ?? field.pendingReason ?? "未给出"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {report.captures.map((item) => (
+              <div key={item.label}>
+                <h3>{item.label} · {item.state}</h3>
+                <p className="mono">00h {item.id00Hex ?? "—"}</p>
+                <p className="mono">20h {item.id20Hex ?? "—"}</p>
+                <p className="mono">40h {item.id40Hex ?? "—"}</p>
+                <p className="mono">UID {shortHex(item.uniqueIdHex)}</p>
+                <p className="fine">参数页 {item.parameterPageBytes ?? 0} 字节</p>
+              </div>
+            ))}
+            <div className="row">
+              <button type="button" className="primary" onClick={() => void api.confirmChip().then(() => props.onOpenChip())}>确认写入芯片定义</button>
+              <button type="button" onClick={props.onOpenChip}>手工填写</button>
             </div>
-          )}
-          <table>
-            <caption>解码字段</caption>
-            <thead><tr><th>字段</th><th>值</th><th>来源</th></tr></thead>
-            <tbody>
-              {report.fields.map((field) => (
-                <tr key={field.key}>
-                  <td>{field.label}</td>
-                  <td>{field.missing ? "—" : field.value}</td>
-                  <td>{field.source ?? field.pendingReason ?? "未给出"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {report.captures.map((item) => (
-            <div key={item.label}>
-              <h3>{item.label} · {item.state}</h3>
-              <p className="mono">00h {item.id00Hex ?? "—"}</p>
-              <p className="mono">20h {item.id20Hex ?? "—"}</p>
-              <p className="mono">40h {item.id40Hex ?? "—"}</p>
-              <p className="mono">UID {item.uniqueIdHex ?? "—"}</p>
-              <p className="fine">参数页 {item.parameterPageBytes ?? 0} 字节</p>
-            </div>
-          ))}
-          <div className="row">
-            <button type="button" className="primary" onClick={() => void api.confirmChip().then(() => props.onOpenChip())}>确认写入芯片定义</button>
-            <button type="button" onClick={props.onOpenChip}>打开芯片定义并手工填写</button>
           </div>
-        </section>
-      )}
+        )}
+      </aside>
+      </div>
     </div>
   );
+}
+
+function shortHex(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+  const parts = value.split(" ");
+  return parts.length <= 24 ? value : `${parts.slice(0, 24).join(" ")} …`;
 }
 
 function HexField(props: { label: string; value: string; onChange: (value: string) => void }) {
